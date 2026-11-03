@@ -1,7 +1,4 @@
-"""Evaluation: metrics per test generator, results table and plots.
-
-Convention everywhere: label 1 = FAKE (positive class), 0 = REAL; scores are P(fake).
-"""
+"""Metrics, per-generator results table and plots (y=1 is fake)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,12 +11,7 @@ from sklearn.metrics import (accuracy_score, average_precision_score, confusion_
 
 
 def compute_metrics(y_true, y_score, threshold: float = 0.5) -> dict:
-    """Accuracy, F1, AUROC, AP, and accuracy on real / fake images separately.
-
-    real_acc = share of real images called real (specificity / TNR)
-    fake_acc = share of fake images called fake (recall / TPR)
-    AUROC is threshold-free; the others depend on `threshold`.
-    """
+    """Accuracy, F1, AUROC, AP, real/fake accuracy."""
     y_true = np.asarray(y_true).astype(int)
     y_score = np.asarray(y_score, dtype=float)
     y_pred = (y_score >= threshold).astype(int)
@@ -41,11 +33,7 @@ def compute_metrics(y_true, y_score, threshold: float = 0.5) -> dict:
 def per_generator_table(preds: pd.DataFrame, threshold: float = 0.5,
                         generator_order: list[str] | None = None,
                         train_generator: str | None = None) -> pd.DataFrame:
-    """One row per (model, generator). preds needs columns: model, generator, y, score.
-
-    If train_generator is given, a 'mean_unseen' row per model is added: the
-    average over all generators EXCEPT the training one (the key number for
-    cross-generator generalisation)."""
+    """Metrics per (model, generator), plus mean_unseen."""
     rows = []
     for (model, gen), g in preds.groupby(["model", "generator"], sort=False):
         rows.append({"model": model, "generator": gen, **compute_metrics(g["y"], g["score"], threshold)})
@@ -65,7 +53,7 @@ def per_generator_table(preds: pd.DataFrame, threshold: float = 0.5,
 
 def plot_roc_per_generator(preds: pd.DataFrame, generator_order: list[str], ncols: int = 4,
                            names: dict | None = None):
-    """One subplot per test generator, one ROC curve per model."""
+    """ROC curves, one subplot per generator."""
     names = names or {}
     n = len(generator_order)
     nrows = int(np.ceil(n / ncols))
@@ -114,7 +102,7 @@ def plot_confusion_grid(preds: pd.DataFrame, model: str, generator_order: list[s
 
 def plot_metric_bars(results: pd.DataFrame, metric: str = "auroc", generator_order: list[str] | None = None,
                      names: dict | None = None):
-    """Grouped bar chart: generators on the x-axis, one bar per model."""
+    """Grouped bars: metric per generator per model."""
     names = names or {}
     piv = results.pivot(index="generator", columns="model", values=metric)
     if generator_order:

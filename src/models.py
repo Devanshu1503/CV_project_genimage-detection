@@ -1,14 +1,6 @@
-"""Model definitions for Problem 1.
-
-Champion  : ImageNet-pretrained ResNet-50, fully fine-tuned, 1 output logit.
-            (He et al. 2016, arXiv 1512.03385; weights from torchvision.)
-Challenger: FROZEN foundation-model features + logistic regression ("linear probe").
-  - CLIP ViT-L/14 (Radford et al. 2021, arXiv 2103.00020; HF id openai/clip-vit-large-patch14).
-    Using frozen CLIP features for fake detection follows Ojha et al. 2023,
-    "Towards Universal Fake Image Detectors that Generalize Across Generative
-    Models" (UnivFD), arXiv 2302.10174.
-  - DINOv2 ViT-B/14 (Oquab et al. 2023, arXiv 2304.07193; HF id facebook/dinov2-base).
-"""
+"""Problem 1 models: ResNet-50 and frozen CLIP / DINOv2 feature extractors."""
+# Refs: ResNet arXiv 1512.03385, CLIP arXiv 2103.00020, DINOv2 arXiv 2304.07193,
+# UnivFD (frozen CLIP + linear probe) arXiv 2302.10174
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,7 +11,7 @@ import torch.nn as nn
 
 
 def build_resnet50(weights: str | None = "IMAGENET1K_V2") -> nn.Module:
-    """torchvision ResNet-50 with the 1000-class head replaced by a single logit."""
+    """ResNet-50 with a 1-logit head."""
     from torchvision.models import ResNet50_Weights, resnet50
     w = getattr(ResNet50_Weights, weights) if weights else None
     model = resnet50(weights=w)
@@ -28,7 +20,7 @@ def build_resnet50(weights: str | None = "IMAGENET1K_V2") -> nn.Module:
 
 
 class CLIPFeatureExtractor(nn.Module):
-    """Frozen CLIP image encoder -> projected image embedding (768-d for ViT-L/14)."""
+    """Frozen CLIP image encoder (768-d embedding)."""
 
     def __init__(self, hf_id: str = "openai/clip-vit-large-patch14"):
         super().__init__()
@@ -43,7 +35,7 @@ class CLIPFeatureExtractor(nn.Module):
 
 
 class DINOv2FeatureExtractor(nn.Module):
-    """Frozen DINOv2 -> CLS token after the final layer norm (768-d for ViT-B/14)."""
+    """Frozen DINOv2, CLS token (768-d)."""
 
     def __init__(self, hf_id: str = "facebook/dinov2-base"):
         super().__init__()
@@ -69,19 +61,14 @@ def build_feature_extractor(kind: str, cfg: dict) -> nn.Module:
 def extract_features_cached(extractor: nn.Module, dataset, out_dir: str | Path, batch_size: int = 64,
                             shard_size: int = 2000, num_workers: int = 2, device: str = "cuda",
                             amp: bool = True) -> np.ndarray:
-    """Embed every image of `dataset` once and cache to disk as .npy shards.
-
-    Shards (shard_00000.npy, ...) are written as we go, so a Colab disconnect only
-    loses the current shard. When all shards exist, they are simply loaded.
-    Row order = dataset order. Returns an (N, D) float32 array.
-    """
+    """Embed all images once, cached as .npy shards (resumable)."""
     from torch.utils.data import DataLoader, Subset
     from tqdm.auto import tqdm
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     n = len(dataset)
-    # Guard: the cache is only valid for the exact same images in the same order.
+    # cache only valid for the same images in the same order
     ids = dataset.df["sample_id"].astype(str).tolist() if hasattr(dataset, "df") else None
     ids_file = out_dir / "sample_ids.txt"
     if ids is not None:

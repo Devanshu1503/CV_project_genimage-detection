@@ -1,10 +1,4 @@
-"""Training code for Problem 1.
-
-- train_resnet():       fine-tune ResNet-50 with AMP, early stopping on val AUROC,
-                        and checkpoint/resume (Colab sessions disconnect).
-- predict_scores():     P(fake) for every image of a DataLoader.
-- train_linear_probe(): logistic regression on frozen features, C tuned on val AUROC.
-"""
+"""ResNet training loop and the linear probe."""
 from __future__ import annotations
 
 import json
@@ -20,7 +14,7 @@ from sklearn.metrics import roc_auc_score
 
 @torch.no_grad()
 def predict_scores(model: nn.Module, loader, device: str = "cuda", amp: bool = True) -> np.ndarray:
-    """Return sigmoid(logit) = predicted probability of FAKE, in loader order."""
+    """P(fake) for every image in the loader."""
     from tqdm.auto import tqdm
     model.eval()
     use_amp = amp and device.startswith("cuda")
@@ -41,12 +35,7 @@ def _save_ckpt(path: Path, **state) -> None:
 def train_resnet(model: nn.Module, train_loader, val_loader, val_labels: np.ndarray,
                  ckpt_dir: str | Path, epochs: int = 5, lr: float = 1e-4, weight_decay: float = 1e-4,
                  patience: int = 2, amp: bool = True, device: str = "cuda", logger=None) -> pd.DataFrame:
-    """Fine-tune with BCE loss. Saves last.pt every epoch and best.pt on val-AUROC improvement.
-
-    If ckpt_dir/last.pt exists, training RESUMES from it (model, optimizer, scaler,
-    epoch counter, history and early-stopping state are all restored).
-    Returns the training history (one row per epoch); also saved as history.csv.
-    """
+    """Fine-tune with BCE, early stopping on val AUROC, resumes from last.pt."""
     from tqdm.auto import tqdm
     log = logger.info if logger else print
     ckpt_dir = Path(ckpt_dir)
@@ -118,12 +107,7 @@ def train_resnet(model: nn.Module, train_loader, val_loader, val_labels: np.ndar
 
 def train_linear_probe(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray,
                        C_grid: list[float], max_iter: int = 5000, seed: int = 42, logger=None):
-    """Standardise features, fit logistic regression for each C, keep the best val AUROC.
-
-    Small C = strong L2 regularisation. Returns (best fitted pipeline, tuning table).
-    The final model is the one trained on the TRAIN split only, so the val split
-    stays an honest model-selection set.
-    """
+    """Logistic regression on features, pick C by val AUROC."""
     from sklearn.linear_model import LogisticRegression
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler

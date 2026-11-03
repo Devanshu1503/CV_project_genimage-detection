@@ -1,14 +1,4 @@
-"""One-call environment setup used by the first cell of every notebook.
-
-The notebook's first cell clones/pulls the repo (it has to, because src/ is not
-importable before the repo exists), then calls `setup()` from here, which:
-  1. mounts Google Drive (Colab only),
-  2. installs ONLY MISSING Python packages (requirements-colab.txt on Colab,
-     requirements.txt locally; nothing is upgraded) and apt p7zip-full,
-  3. sets all random seeds,
-  4. prints GPU info,
-  5. loads the config, resolves paths and creates the output folders.
-"""
+"""Setup used by the first cell of every notebook."""
 from __future__ import annotations
 
 import os
@@ -24,7 +14,7 @@ from .config import ensure_dirs, get_paths, is_colab, load_config, REPO_ROOT
 
 
 def mount_drive() -> None:
-    """Mount Google Drive at /content/drive (no-op outside Colab)."""
+    """Mount Drive (Colab only)."""
     if not is_colab():
         print("[setup] Not in Colab: skipping Drive mount.")
         return
@@ -35,13 +25,13 @@ def mount_drive() -> None:
     drive.mount("/content/drive")
 
 
-# pip name -> import name, for packages where the two differ.
+# pip name -> import name
 _IMPORT_NAMES = {"pyyaml": "yaml", "pillow": "PIL", "scikit-learn": "sklearn",
                  "opencv-python": "cv2", "imagehash": "imagehash", "open_clip_torch": "open_clip"}
 
 
 def _requirement_names(req_file) -> list[str]:
-    """Package names from a requirements file (comments and version specifiers removed)."""
+    """Package names in a requirements file."""
     import re
     names = []
     for line in open(req_file, encoding="utf-8"):
@@ -52,19 +42,14 @@ def _requirement_names(req_file) -> list[str]:
 
 
 def missing_packages(req_file) -> list[str]:
-    """Requirements that are NOT importable in this environment."""
+    """Requirements that aren't importable yet."""
     import importlib.util
     return [n for n in _requirement_names(req_file)
             if importlib.util.find_spec(_IMPORT_NAMES.get(n.lower(), n.replace("-", "_"))) is None]
 
 
 def install_requirements(apt_packages: list[str] | None = None, quiet: bool = True) -> None:
-    """Install only what is missing; never upgrade what is already there.
-
-    Colab: requirements-colab.txt (torch, numpy, pandas, ... are preinstalled and are
-    deliberately left alone, so Colab's CUDA build of torch is never replaced).
-    Local: requirements.txt. Plus apt packages (Colab only).
-    """
+    """pip install only missing packages (never upgrades), plus apt packages on Colab."""
     req = REPO_ROOT / ("requirements-colab.txt" if is_colab() else "requirements.txt")
     if req.exists():
         missing = missing_packages(req)
@@ -97,7 +82,7 @@ def _apt_installed(pkg: str) -> bool:
 
 
 def set_seeds(seed: int) -> None:
-    """Fix python / numpy / torch seeds for reproducibility."""
+    """Seed python, numpy, torch."""
     random.seed(seed)
     np.random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
@@ -110,7 +95,7 @@ def set_seeds(seed: int) -> None:
 
 
 def gpu_info() -> str:
-    """Return a human-readable description of the available accelerator."""
+    """GPU name/memory or "no GPU"."""
     try:
         import torch
     except ImportError:
@@ -123,7 +108,7 @@ def gpu_info() -> str:
 
 def setup(apt_packages: list[str] | None = ("p7zip-full",), install: bool = True,
           config_path: str | None = None):
-    """Run the full setup. Returns (cfg, P)."""
+    """Mount, install, seed, make folders. Returns (cfg, P)."""
     print(f"[setup] Python {platform.python_version()} | Colab: {is_colab()} | repo: {REPO_ROOT}")
     mount_drive()
     if install:

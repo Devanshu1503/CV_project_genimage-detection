@@ -1,8 +1,4 @@
-"""Plotting and analysis helpers for the EDA notebook.
-
-All figures go through `savefig()` so they land in <project_root>/figures with
-consistent style and resolution.
-"""
+"""Plot and analysis helpers for the EDA notebook."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,7 +21,7 @@ def set_style() -> None:
 
 
 def savefig(fig, name: str, figures_dir: str | Path, dpi: int = 150) -> Path:
-    """Save a figure as PNG in figures_dir and print where it went."""
+    """Save fig to figures/<name>.png."""
     figures_dir = Path(figures_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
     out = figures_dir / f"{name}.png"
@@ -34,9 +30,7 @@ def savefig(fig, name: str, figures_dir: str | Path, dpi: int = 150) -> Path:
     return out
 
 
-# -----------------------------------------------------------------------------
 # Image grids
-# -----------------------------------------------------------------------------
 def plot_image_grid(paths: list, captions: list[str], ncols: int = 8, title: str = "",
                     thumb: int = 256, ax_size: float = 2.0):
     n = len(paths)
@@ -60,18 +54,16 @@ def plot_image_grid(paths: list, captions: list[str], ncols: int = 8, title: str
     return fig
 
 
-# -----------------------------------------------------------------------------
 # Pixel statistics
-# -----------------------------------------------------------------------------
 def sample_groups(df: pd.DataFrame, n_per_group: int, seed: int,
                   group_cols=("generator", "label")) -> pd.DataFrame:
-    """Up to n rows per group (reproducible)."""
-    return df.sample(frac=1.0, random_state=seed).groupby(list(group_cols)).head(n_per_group)
+    """Up to n random rows per group."""
+    return df.sample(frac=1.0, random_state=seed).groupby(list(group_cols), observed=True).head(n_per_group)
 
 
 def compute_pixel_stats(df: pd.DataFrame, root: str | Path, path_col: str, max_side: int = 256,
                         bins: int = 64, n_threads: int = 8) -> tuple[pd.DataFrame, np.ndarray]:
-    """Pixel stats for every row of df. Returns (stats DataFrame, histograms (n,3,bins))."""
+    """Pixel stats + histograms for every row."""
     from concurrent.futures import ThreadPoolExecutor
     from tqdm.auto import tqdm
     root = Path(root)
@@ -92,7 +84,7 @@ def compute_pixel_stats(df: pd.DataFrame, root: str | Path, path_col: str, max_s
 
 def average_spectra(df: pd.DataFrame, root: str | Path, path_col: str, group_col: str,
                     crop: int = 128, n_threads: int = 8) -> tuple[dict, dict]:
-    """Mean log-magnitude FFT spectrum per group. Returns (spectra, n_used / n_skipped)."""
+    """Mean FFT spectrum per group, plus used/skipped counts."""
     from concurrent.futures import ThreadPoolExecutor
     from tqdm.auto import tqdm
     root = Path(root)
@@ -102,7 +94,7 @@ def average_spectra(df: pd.DataFrame, root: str | Path, path_col: str, group_col
         return None if img is None else log_fft_spectrum(img, crop)
 
     spectra, counts = {}, {}
-    for g, sub in df.groupby(group_col, sort=False):
+    for g, sub in df.groupby(group_col, sort=False, observed=True):
         with ThreadPoolExecutor(n_threads) as ex:
             specs = list(tqdm(ex.map(one, sub[path_col]), total=len(sub), desc=f"FFT {g}"))
         ok = [s for s in specs if s is not None]
@@ -113,7 +105,7 @@ def average_spectra(df: pd.DataFrame, root: str | Path, path_col: str, group_col
 
 
 def plot_spectra(spectra: dict, reference: str | None = None, ncols: int = 5, title: str = ""):
-    """Show each group's mean spectrum; if `reference` is given, add a row of differences."""
+    """Plot spectra (and diff vs reference)."""
     keys = list(spectra)
     rows = 2 if reference else 1
     ncols = min(ncols, len(keys))
@@ -141,28 +133,18 @@ def plot_spectra(spectra: dict, reference: str | None = None, ncols: int = 5, ti
     return fig
 
 
-# -----------------------------------------------------------------------------
 # Outliers
-# -----------------------------------------------------------------------------
 def iqr_outlier_mask(s: pd.Series, k: float = 1.5) -> pd.Series:
-    """True where a value lies outside [Q1 - k*IQR, Q3 + k*IQR] (Tukey's fences)."""
+    """Tukey IQR outliers."""
     q1, q3 = s.quantile(0.25), s.quantile(0.75)
     iqr = q3 - q1
     return (s < q1 - k * iqr) | (s > q3 + k * iqr)
 
 
-# -----------------------------------------------------------------------------
-# Metadata-only "shortcut" test
-# -----------------------------------------------------------------------------
+# Metadata-only shortcut test
 def metadata_shortcut_test(df: pd.DataFrame, feature_cols: list[str], label_col: str = "y",
                            seed: int = 42, n_splits: int = 5) -> tuple[pd.DataFrame, dict]:
-    """Can real vs fake be predicted from file METADATA alone (no pixels)?
-
-    If yes, the dataset contains a shortcut that an image model can exploit too.
-    Models: logistic regression (standardised features) and a depth-3 decision tree.
-    Returns (metrics table: mean +/- std over folds, {model: confusion matrix from
-    out-of-fold predictions}).
-    """
+    """Predict real/fake from metadata only (LR + depth-3 tree, k-fold CV)."""
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import confusion_matrix
     from sklearn.model_selection import StratifiedKFold, cross_val_predict, cross_validate
@@ -170,7 +152,7 @@ def metadata_shortcut_test(df: pd.DataFrame, feature_cols: list[str], label_col:
     from sklearn.preprocessing import StandardScaler
     from sklearn.tree import DecisionTreeClassifier
 
-    X = df[feature_cols].astype(float).fillna(-1).to_numpy()   # NaN (e.g. no JPEG quality) -> -1
+    X = df[feature_cols].astype(float).fillna(-1).to_numpy()  # no JPEG quality -> -1
     y = df[label_col].astype(int).to_numpy()
     cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
     models = {

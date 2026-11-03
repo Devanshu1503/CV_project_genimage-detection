@@ -1,10 +1,4 @@
-"""Load configs/config.yaml and resolve paths for Colab or a local machine.
-
-Usage:
-    from src.config import load_config, get_paths
-    cfg = load_config()
-    P = get_paths(cfg)       # P.manifests, P.raw_subset, P.figures, ...
-"""
+"""Load config.yaml and resolve paths (Colab or local)."""
 from __future__ import annotations
 
 import logging
@@ -15,16 +9,12 @@ from pathlib import Path
 
 import yaml
 
-# The repo root is the parent of src/.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = REPO_ROOT / "configs" / "config.yaml"
 
 
 def is_colab() -> bool:
-    """True when running inside Google Colab.
-
-    GENIMAGE_ENV=colab|local can override the automatic detection.
-    """
+    """Running in Colab? (GENIMAGE_ENV can override)."""
     override = os.environ.get("GENIMAGE_ENV", "").strip().lower()
     if override in {"colab", "local"}:
         return override == "colab"
@@ -32,7 +22,6 @@ def is_colab() -> bool:
 
 
 def load_config(path: str | os.PathLike | None = None) -> dict:
-    """Read the YAML config into a plain dict."""
     path = Path(path) if path else DEFAULT_CONFIG
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
@@ -44,7 +33,7 @@ def load_config(path: str | os.PathLike | None = None) -> dict:
 
 @dataclass
 class Paths:
-    """All folders used by the project, resolved for the current environment."""
+    """Project folders."""
     env: str
     repo_root: Path
     genimage_root: Path
@@ -65,12 +54,12 @@ class Paths:
 
 
 def _resolve(p: str) -> Path:
-    # A leading "/" counts as absolute even when the tests run on Windows.
+    # "/..." counts as absolute on Windows too
     return Path(p) if (Path(p).is_absolute() or str(p).startswith("/")) else (REPO_ROOT / p)
 
 
 def get_paths(cfg: dict, env: str | None = None) -> Paths:
-    """Build a Paths object from the config ('colab' or 'local' block)."""
+    """Paths for the colab or local block."""
     env = env or ("colab" if is_colab() else "local")
     block = cfg["paths"][env]
     project_root = _resolve(block["project_root"])
@@ -86,19 +75,19 @@ def get_paths(cfg: dict, env: str | None = None) -> Paths:
 
 
 def ensure_dirs(P: Paths) -> None:
-    """Create the project output folders (and the local work dir) if missing."""
+    """Create the output folders."""
     for name in ["project_root", "work_dir", "manifests", "raw_subset", "processed",
                  "features", "checkpoints", "results", "figures", "logs"]:
         getattr(P, name).mkdir(parents=True, exist_ok=True)
 
 
 def generator_names(cfg: dict) -> dict:
-    """Map folder name -> short display name, in config order."""
+    """folder -> display name."""
     return {g["folder"]: g["name"] for g in cfg["generators"]}
 
 
 def get_logger(name: str, log_dir: Path | None = None) -> logging.Logger:
-    """Logger that prints to the notebook AND appends to logs/<name>.log."""
+    """Logger that prints and writes logs/<name>.log."""
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
     logger.propagate = False

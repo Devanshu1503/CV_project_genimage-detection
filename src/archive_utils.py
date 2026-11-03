@@ -1,14 +1,4 @@
-"""Read GenImage split-zip archives IN PLACE with 7-Zip.
-
-GenImage ships every generator as a split ZIP: <base>.z01 ... <base>.zNN plus a
-final <base>.zip that holds the central directory. We never copy or extract a
-whole generator (tens of GB). Instead we:
-  1. `7z l -slt <base>.zip`   -> list every file inside (technical listing)
-  2. parse that text into a DataFrame (parse_7z_slt)
-  3. `7z x <base>.zip -i@list` -> extract only the files we sampled
-
-Archive base names differ per generator, so they are discovered, never hardcoded.
-"""
+"""Read the GenImage split zips in place with 7z (list + extract only what we need)."""
 from __future__ import annotations
 
 import re
@@ -20,12 +10,12 @@ from typing import Callable, Iterable
 
 import pandas as pd
 
-# Matches "<base>.zip" or "<base>.z01", "<base>.z123" (case-insensitive).
+# <base>.zip or <base>.z01, .z02, ...
 _PART_RE = re.compile(r"^(?P<base>.+)\.(?P<ext>zip|z\d{2,})$", re.IGNORECASE)
 
 
 class SevenZipError(RuntimeError):
-    """Raised when a 7z command fails. Carries the exact command and stderr."""
+    """7z failed (keeps the command and stderr)."""
 
     def __init__(self, cmd, returncode, stdout, stderr):
         self.cmd, self.returncode, self.stdout, self.stderr = cmd, returncode, stdout, stderr
@@ -34,11 +24,8 @@ class SevenZipError(RuntimeError):
         super().__init__(msg)
 
 
-# -----------------------------------------------------------------------------
 # 7z binary
-# -----------------------------------------------------------------------------
 def find_7z(binary: str = "auto") -> str:
-    """Return the 7-Zip executable to use, or raise with an install hint."""
     if binary and binary != "auto":
         if shutil.which(binary) or Path(binary).exists():
             return binary
@@ -52,7 +39,7 @@ def find_7z(binary: str = "auto") -> str:
 
 
 def seven_zip_version(binary: str = "auto") -> str:
-    """First non-empty line of 7z's banner, e.g. '7-Zip [64] 16.02 : ...'."""
+    """7z version line."""
     exe = find_7z(binary)
     res = subprocess.run([exe], capture_output=True, text=True)
     for line in (res.stdout + res.stderr).splitlines():
@@ -61,15 +48,9 @@ def seven_zip_version(binary: str = "auto") -> str:
     return f"{exe}: (no version banner)"
 
 
-# -----------------------------------------------------------------------------
 # Archive discovery
-# -----------------------------------------------------------------------------
 def discover_archives(gen_dir: str | Path, max_depth: int = 2) -> list[dict]:
-    """Find every split-zip set in a generator folder (searching a few levels down).
-
-    Returns one dict per archive base name with its parts, sizes and any gaps
-    in the .z01..zNN numbering (a gap means a part is missing on Drive).
-    """
+    """Find the split-zip sets in a generator folder."""
     gen_dir = Path(gen_dir)
     groups: dict[tuple[Path, str], dict] = {}
     for f in _walk_files(gen_dir, max_depth):
@@ -111,7 +92,7 @@ def _walk_files(root: Path, max_depth: int) -> Iterable[Path]:
 
 
 def archive_inventory(genimage_root: str | Path, generator_folders: list[str]) -> pd.DataFrame:
-    """One row per (generator, archive) with part counts and total size in GB."""
+    """Parts, size and status per generator."""
     rows = []
     for gen in generator_folders:
         gdir = Path(genimage_root) / gen
@@ -136,21 +117,19 @@ def archive_inventory(genimage_root: str | Path, generator_folders: list[str]) -
 
 
 def list_folder_files(gen_dir: str | Path) -> pd.DataFrame:
-    """Plain file listing (name, size in GB) of one generator folder."""
+    """Files + sizes in one generator folder."""
     return pd.DataFrame([{"file": str(p.relative_to(gen_dir)), "gb": round(p.stat().st_size / 1e9, 3)}
                          for p in _walk_files(Path(gen_dir), 2)])
 
 
-# -----------------------------------------------------------------------------
 # Listing
-# -----------------------------------------------------------------------------
 def run_7z_list(zip_path: str | Path, binary: str = "auto", timeout: int | None = None) -> str:
-    """Run `7z l -slt` on the archive and return stdout. Raises SevenZipError on failure."""
+    """Run `7z l -slt` and return the raw text."""
     exe = find_7z(binary)
     cmd = [exe, "l", "-slt", str(zip_path)]
     res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
                          encoding="utf-8", errors="replace")
-    # Exit code 0 = OK, 1 = warning (listing is still usable), >=2 = fatal error.
+    # 0 ok, 1 warning, 2+ fatal
     if res.returncode >= 2 or "----------" not in res.stdout:
         raise SevenZipError(cmd, res.returncode, res.stdout, res.stderr)
     if res.returncode == 1:
@@ -159,24 +138,7 @@ def run_7z_list(zip_path: str | Path, binary: str = "auto", timeout: int | None 
 
 
 def parse_7z_slt(text: str) -> pd.DataFrame:
-    """Parse `7z l -slt` output into one row per archive entry.
-
-    The output looks like:
-        ...header...
-        --
-        Path = archive.zip        <- archive-level block (ignored)
-        Type = zip
-        ----------                <- entries start after this line
-        Path = top/train/ai/x.png
-        Folder = -
-        Size = 12345
-        Packed Size = 12000
-        Modified = 2023-04-19 10:00:00
-        Attributes = A
-        CRC = 1A2B3C4D
-        ...
-        (blank line between entries)
-    """
+    """Parse `7z l -slt` text into a DataFrame (one row per entry)."""
     lines = text.splitlines()
     try:
         start = next(i for i, ln in enumerate(lines) if ln.strip() == "----------") + 1
@@ -192,7 +154,7 @@ def parse_7z_slt(text: str) -> pd.DataFrame:
             k, v = ln.split(" = ", 1)
             cur[k.strip()] = v.strip()
         elif cur is not None and ln.endswith(" =") and not ln.startswith(" "):
-            cur[ln[:-2].strip()] = ""      # key with empty value, e.g. "CRC ="
+            cur[ln[:-2].strip()] = ""  # e.g. "CRC ="
     if cur is not None:
         records.append(cur)
 
@@ -200,7 +162,7 @@ def parse_7z_slt(text: str) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["inner_path", "is_dir", "size", "packed_size", "modified", "crc"])
     def col(name, default=None):
-        # Not every 7z version prints every field; missing ones become a default.
+        # some 7z versions skip fields
         return df[name] if name in df else pd.Series(default, index=df.index, dtype=object)
 
     out = pd.DataFrame({"inner_path": df["Path"].str.replace("\\", "/", regex=False)})
@@ -216,11 +178,7 @@ def parse_7z_slt(text: str) -> pd.DataFrame:
 
 def list_archive(zip_path: str | Path, binary: str = "auto", timeout: int | None = None,
                  cache_txt: str | Path | None = None) -> tuple[pd.DataFrame, float]:
-    """List an archive. Returns (entries DataFrame, seconds taken by 7z).
-
-    If cache_txt is given, the raw 7z text is saved there (and re-used when it
-    already exists) so parsing can be re-run without touching Drive again.
-    """
+    """List an archive, returns (entries, seconds)."""
     t0 = time.time()
     if cache_txt and Path(cache_txt).exists():
         text = Path(cache_txt).read_text(encoding="utf-8")
@@ -233,17 +191,11 @@ def list_archive(zip_path: str | Path, binary: str = "auto", timeout: int | None
     return parse_7z_slt(text), secs
 
 
-# -----------------------------------------------------------------------------
 # Selective extraction
-# -----------------------------------------------------------------------------
 def extract_files(zip_path: str | Path, inner_paths: list[str], out_dir: str | Path,
                   binary: str = "auto", timeout: int | None = None,
                   list_file: str | Path | None = None) -> dict:
-    """Extract ONLY `inner_paths` from the archive into out_dir (keeping the inner folders).
-
-    Uses `7z x <zip> -o<out_dir> -i@<listfile> -y`. Returns a dict with timing,
-    which requested files exist afterwards, and which are missing.
-    """
+    """Extract only `inner_paths` into out_dir."""
     exe = find_7z(binary)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -268,16 +220,7 @@ def extract_sample_to_drive(sample: pd.DataFrame, zip_path: str | Path, work_dir
                             timeout: int | None = None,
                             on_file: Callable[[Path, pd.Series], dict] | None = None,
                             logger=None, progress: bool = True) -> tuple[pd.DataFrame, list[dict]]:
-    """Extract the sampled files of ONE generator and copy them to Drive.
-
-    `sample` needs columns: sample_id, inner_path, raw_relpath, uncompressed_bytes.
-    Files whose Drive copy already exists with the right size are skipped (resumable).
-    Original bytes are copied unchanged (no re-encoding).
-    `on_file(local_path, row)` is called on the LOCAL copy before it is deleted
-    (fast disk) and can return a dict of extra fields (e.g. image metadata).
-
-    Returns (status DataFrame: sample_id, status, ...; list of on_file dicts).
-    """
+    """Extract one generator's sample and copy it to Drive (skips files already there)."""
     from tqdm.auto import tqdm
 
     log = logger.info if logger else print
@@ -314,13 +257,13 @@ def extract_sample_to_drive(sample: pd.DataFrame, zip_path: str | Path, work_dir
                     info = on_file(src, r) or {}
                     info["sample_id"] = r["sample_id"]
                     extra.append(info)
-                except Exception as e:  # never silently skip: record the error
+                except Exception as e:  # log it, don't skip silently
                     extra.append({"sample_id": r["sample_id"], "on_file_error": repr(e)})
             dest = r["dest"]
             dest.parent.mkdir(parents=True, exist_ok=True)
             part = dest.with_name(dest.name + ".part")
-            shutil.copyfile(src, part)          # copy bytes unchanged
-            part.replace(dest)                  # atomic rename -> no half-written files
+            shutil.copyfile(src, part)  # original bytes
+            part.replace(dest)  # no half-written files
             status.append({"sample_id": r["sample_id"], "status": "extracted"})
         shutil.rmtree(tmp, ignore_errors=True)
     return pd.DataFrame(status), extra

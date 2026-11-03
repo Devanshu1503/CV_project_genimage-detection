@@ -1,12 +1,5 @@
-"""Build manifests (one row per file inside an archive) and draw the sample.
-
-Expected inner layout (from the official GenImage README, VERIFIED at runtime in
-notebook 01): [<top folder>/]{train,val}/{ai,nature}/<file>
-  ai     = generated image (label 1, "fake")
-  nature = real ImageNet image (label 0, "real")
-Reference: Zhu et al., "GenImage: A Million-Scale Benchmark for Detecting
-AI-Generated Image", NeurIPS 2023, arXiv 2306.08571.
-"""
+"""Manifests (one row per file in an archive), sampling and leakage checks."""
+# Refs: GenImage, Zhu et al. 2023, arXiv 2306.08571
 from __future__ import annotations
 
 import re
@@ -16,29 +9,24 @@ import numpy as np
 import pandas as pd
 
 SPLITS = {"train", "val"}
-LABELS = {"ai": 1, "nature": 0}            # 1 = fake (positive class), 0 = real
+LABELS = {"ai": 1, "nature": 0}  # 1 = fake
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tif", ".tiff", ".gif"}
-# Read these columns as text so hashes / class ids keep leading zeros and never become numbers.
+# keep these as strings (leading zeros)
 STR_DTYPES = {"md5": str, "phash": str, "imagenet_class": str, "filename": str}
 
 
 def read_csv(path, **kw) -> pd.DataFrame:
-    """pd.read_csv with the project's string columns protected (see STR_DTYPES)."""
+    """pd.read_csv that keeps hash/class columns as strings."""
     return pd.read_csv(path, dtype=STR_DTYPES, low_memory=False, **kw)
 
-# ImageNet synset id, e.g. "n01440764" (used in real ImageNet train filenames).
+# ImageNet synset, e.g. n01440764
 _SYNSET_RE = re.compile(r"(?<![a-z0-9])(n\d{8})(?![0-9])", re.IGNORECASE)
-# Leading integer followed by "_", e.g. "123_sdv4_00001.png". We only GUESS that this
-# is a class index; notebook 01 reports how often each pattern matches.
+# e.g. 123_sdv4_00001.png, we assume 123 is the class (checked in nb 01)
 _LEADING_INT_RE = re.compile(r"^(\d{1,4})_")
 
 
 def parse_inner_path(inner_path: str) -> dict:
-    """Split an archive path into top_folder / split / label / filename / ext.
-
-    Works whether or not there is a top-level folder. Anything that doesn't
-    match the expected layout gets split/label = "unknown" (never guessed).
-    """
+    """Path inside the archive -> split, label, filename, ext, top folder."""
     p = PurePosixPath(inner_path.replace("\\", "/"))
     parts = list(p.parts)
     filename = parts[-1] if parts else ""
@@ -46,7 +34,7 @@ def parse_inner_path(inner_path: str) -> dict:
     split = label = "unknown"
     top_folder = ""
     dirs = [d.lower() for d in parts[:-1]]
-    # Find the last "train"/"val" directory that is followed by "ai"/"nature".
+    # last train|val dir followed by ai|nature
     for i in range(len(dirs) - 1, -1, -1):
         if dirs[i] in SPLITS and i + 1 < len(dirs) and dirs[i + 1] in LABELS:
             split, label = dirs[i], dirs[i + 1]
@@ -59,12 +47,7 @@ def parse_inner_path(inner_path: str) -> dict:
 
 
 def parse_imagenet_class(filename: str) -> tuple[str | None, str | None]:
-    """Return (class_id, source).
-
-    source = "synset"      -> an ImageNet synset like n01440764 was found
-             "leading_int" -> filename starts with an integer + "_" (assumed class index)
-             None          -> no class information in the filename
-    """
+    """(class_id, "synset" | "leading_int" | None)."""
     m = _SYNSET_RE.search(filename)
     if m:
         return m.group(1).lower(), "synset"
@@ -75,7 +58,7 @@ def parse_imagenet_class(filename: str) -> tuple[str | None, str | None]:
 
 
 def build_manifest(listing: pd.DataFrame, generator: str, archive_path: str) -> pd.DataFrame:
-    """Turn a parsed `7z l -slt` listing into a manifest (files only, no folders)."""
+    """Parsed listing -> manifest (files only)."""
     files = listing.loc[~listing["is_dir"]].copy()
     parsed = pd.DataFrame([parse_inner_path(p) for p in files["inner_path"]], index=files.index)
     cls = [parse_imagenet_class(f) for f in parsed["filename"]]
@@ -97,21 +80,18 @@ def build_manifest(listing: pd.DataFrame, generator: str, archive_path: str) -> 
 
 
 def sample_id_of(df: pd.DataFrame) -> pd.Series:
-    """Unique, human-readable id: generator/split/label/filename."""
+    """generator/split/label/filename."""
     return df["generator"] + "/" + df["split"] + "/" + df["label"] + "/" + df["filename"]
 
 
-# -----------------------------------------------------------------------------
 # Summaries
-# -----------------------------------------------------------------------------
 def manifest_summary(m: pd.DataFrame) -> pd.DataFrame:
-    """Counts per generator x split x label."""
-    return (m.groupby(["generator", "split", "label"]).size()
+        return (m.groupby(["generator", "split", "label"]).size()
               .unstack(["split", "label"], fill_value=0))
 
 
 def filename_leakage_report(m: pd.DataFrame) -> dict:
-    """Do real ('nature') filenames repeat across generators or across train/val?"""
+    """Do real filenames repeat across generators or train/val?"""
     nat = m.loc[(m["label"] == "nature") & m["is_image"]]
     per_name = nat.groupby("filename").agg(n_generators=("generator", "nunique"),
                                            n_splits=("split", "nunique"),
@@ -121,10 +101,9 @@ def filename_leakage_report(m: pd.DataFrame) -> dict:
         "in_more_than_one_generator": int((per_name["n_generators"] > 1).sum()),
         "in_both_train_and_val": int((per_name["n_splits"] > 1).sum()),
     }
-    # Same filename listed twice inside one generator (e.g. in train and val).
     dup_within = nat.groupby(["generator", "filename"]).size()
     report["repeated_within_a_generator"] = int((dup_within > 1).sum())
-    # Pairwise overlap matrix between generators.
+    # overlap between generators
     gens = sorted(nat["generator"].unique())
     sets = {g: set(nat.loc[nat["generator"] == g, "filename"]) for g in gens}
     overlap = pd.DataFrame([[len(sets[a] & sets[b]) for b in gens] for a in gens],
@@ -132,17 +111,9 @@ def filename_leakage_report(m: pd.DataFrame) -> dict:
     return {"summary": report, "overlap_matrix": overlap, "per_filename": per_name}
 
 
-# -----------------------------------------------------------------------------
 # Sampling
-# -----------------------------------------------------------------------------
 def stratified_sample(pool: pd.DataFrame, n: int, strata_col: str | None, seed: int) -> pd.DataFrame:
-    """Draw n rows, spreading them as evenly as possible across strata (classes).
-
-    How: shuffle with a fixed seed, number the rows inside each class (0, 1, 2, ...),
-    then take rows in order of that number. Round 0 takes one image from every
-    class, round 1 a second one, etc. Rows with no class are treated as one group.
-    If the pool has fewer than n rows, everything is returned.
-    """
+    """Sample n rows, round-robin over classes so coverage is even."""
     if len(pool) <= n:
         return pool.copy()
     shuffled = pool.sample(frac=1.0, random_state=seed)
@@ -150,17 +121,12 @@ def stratified_sample(pool: pd.DataFrame, n: int, strata_col: str | None, seed: 
         return shuffled.head(n).copy()
     key = shuffled[strata_col].fillna("__none__")
     rank = shuffled.groupby(key).cumcount()
-    # Stable sort by rank keeps the random order inside each round.
     order = np.argsort(rank.to_numpy(), kind="stable")
     return shuffled.iloc[order[:n]].copy()
 
 
 def build_sampling_plan(m: pd.DataFrame, cfg: dict, logger=None) -> pd.DataFrame:
-    """Select the training pool (SD1.4 train) and every generator's test set (val).
-
-    Leakage protection: any real image whose filename is in the training sample is
-    removed from the test pools BEFORE sampling (so test sets still reach full size).
-    """
+    """SD1.4 train pool + one test set per generator, no filename overlap."""
     log = logger.info if logger else print
     s = cfg["sampling"]
     seed = cfg["project"]["seed"]
@@ -204,7 +170,7 @@ def build_sampling_plan(m: pd.DataFrame, cfg: dict, logger=None) -> pd.DataFrame
 
 
 def class_coverage(plan: pd.DataFrame) -> pd.DataFrame:
-    """How many distinct classes each (generator, role, label) sample covers."""
+    """Classes covered per generator/role/label."""
     g = plan.groupby(["generator", "role", "label"])
     return pd.DataFrame({
         "n_images": g.size(),
@@ -218,7 +184,7 @@ def estimate_size_gb(plan: pd.DataFrame) -> float:
 
 
 def suggest_sample_sizes(plan: pd.DataFrame, budget_gb: float, train_n: int, test_n: int) -> dict:
-    """Scale both sample sizes down proportionally to fit the Drive budget (10% margin)."""
+    """Smaller sample sizes that fit the Drive budget."""
     total = estimate_size_gb(plan)
     factor = min(1.0, 0.9 * budget_gb / max(total, 1e-9))
     return {"estimated_gb": round(total, 2), "budget_gb": budget_gb, "scale": round(factor, 3),
@@ -226,18 +192,9 @@ def suggest_sample_sizes(plan: pd.DataFrame, budget_gb: float, train_n: int, tes
             "suggested_test_per_label": int(test_n * factor)}
 
 
-# -----------------------------------------------------------------------------
-# Orchestration: list one generator's archive(s) into a manifest file
-# -----------------------------------------------------------------------------
 def list_generator_to_manifest(gen: str, inventory: pd.DataFrame, manifests_dir, work_dir,
                                cfg: dict, relist: bool = False, logger=None):
-    """Run `7z l -slt` on every complete archive of `gen` and save manifest_<gen>.csv.gz.
-
-    Resumable: if the manifest file exists (and relist=False) it is loaded instead.
-    The raw 7z text is cached on the LOCAL work disk (it is large; not kept on Drive).
-    Returns (manifest DataFrame, seconds spent in 7z or None if loaded from disk).
-    Raises archive_utils.SevenZipError if 7z cannot open the archive.
-    """
+    """List a generator's archive(s) and save manifest_<gen>.csv.gz (loads it if it exists)."""
     from pathlib import Path
     from . import archive_utils as au
     log = logger.info if logger else print
@@ -265,15 +222,9 @@ def list_generator_to_manifest(gen: str, inventory: pd.DataFrame, manifests_dir,
     return m, total
 
 
-# -----------------------------------------------------------------------------
-# Duplicates and train/test leakage in the extracted subset
-# -----------------------------------------------------------------------------
+# Duplicates / leakage
 def duplicate_pairs(df: pd.DataFrame, near_threshold: int) -> pd.DataFrame:
-    """Exact (same md5) and near (pHash Hamming <= threshold) duplicate pairs.
-
-    df needs: sample_id, generator, role, label, md5, phash (hex). One row per pair,
-    with both sides' info and a 'roles' column like 'test-train'.
-    """
+    """Exact (md5) and near (pHash) duplicate pairs."""
     from itertools import combinations
     from .image_utils import near_duplicate_pairs
     df = df.reset_index(drop=True)
@@ -293,7 +244,7 @@ def duplicate_pairs(df: pd.DataFrame, near_threshold: int) -> pd.DataFrame:
 
 
 def leaking_test_ids(pairs: pd.DataFrame) -> set:
-    """Test images that are an exact or near duplicate of ANY training image."""
+    """Test images that duplicate a training image."""
     tt = pairs.loc[pairs["roles"] == "test-train"]
     ids = set(tt.loc[tt["a_role"] == "test", "a_sample_id"]) | set(tt.loc[tt["b_role"] == "test", "b_sample_id"])
     return ids
