@@ -18,6 +18,13 @@ import pandas as pd
 SPLITS = {"train", "val"}
 LABELS = {"ai": 1, "nature": 0}            # 1 = fake (positive class), 0 = real
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tif", ".tiff", ".gif"}
+# Read these columns as text so hashes / class ids keep leading zeros and never become numbers.
+STR_DTYPES = {"md5": str, "phash": str, "imagenet_class": str, "filename": str}
+
+
+def read_csv(path, **kw) -> pd.DataFrame:
+    """pd.read_csv with the project's string columns protected (see STR_DTYPES)."""
+    return pd.read_csv(path, dtype=STR_DTYPES, low_memory=False, **kw)
 
 # ImageNet synset id, e.g. "n01440764" (used in real ImageNet train filenames).
 _SYNSET_RE = re.compile(r"(?<![a-z0-9])(n\d{8})(?![0-9])", re.IGNORECASE)
@@ -217,3 +224,76 @@ def suggest_sample_sizes(plan: pd.DataFrame, budget_gb: float, train_n: int, tes
     return {"estimated_gb": round(total, 2), "budget_gb": budget_gb, "scale": round(factor, 3),
             "suggested_train_per_label": int(train_n * factor),
             "suggested_test_per_label": int(test_n * factor)}
+
+
+# -----------------------------------------------------------------------------
+# Orchestration: list one generator's archive(s) into a manifest file
+# -----------------------------------------------------------------------------
+def list_generator_to_manifest(gen: str, inventory: pd.DataFrame, manifests_dir, work_dir,
+                               cfg: dict, relist: bool = False, logger=None):
+    """Run `7z l -slt` on every complete archive of `gen` and save manifest_<gen>.csv.gz.
+
+    Resumable: if the manifest file exists (and relist=False) it is loaded instead.
+    The raw 7z text is cached on the LOCAL work disk (it is large; not kept on Drive).
+    Returns (manifest DataFrame, seconds spent in 7z or None if loaded from disk).
+    Raises archive_utils.SevenZipError if 7z cannot open the archive.
+    """
+    from pathlib import Path
+    from . import archive_utils as au
+    log = logger.info if logger else print
+    out = Path(manifests_dir) / f"manifest_{gen}.csv.gz"
+    if out.exists() and not relist:
+        log(f"{gen}: manifest already exists -> loading {out.name}")
+        return read_csv(out), None
+    arcs = inventory.loc[(inventory["generator"] == gen) & (inventory["status"] == "ok")]
+    if arcs.empty:
+        raise RuntimeError(f"{gen}: no complete archive found (see the inventory table).")
+    if len(arcs) > 1:
+        log(f"{gen}: NOTE {len(arcs)} archives found; all of them are listed.")
+    parts, total = [], 0.0
+    for zp in arcs["zip_path"]:
+        log(f"{gen}: 7z l -slt {zp}")
+        sz = cfg["seven_zip"]
+        listing, secs = au.list_archive(zp, sz["binary"], sz["list_timeout_sec"],
+                                        cache_txt=Path(work_dir) / "listings" / f"{Path(zp).stem}.txt")
+        total += secs
+        parts.append(build_manifest(listing, gen, zp))
+        log(f"{gen}: {len(listing)} entries listed in {secs:.1f}s")
+    m = pd.concat(parts, ignore_index=True)
+    m.to_csv(out, index=False)
+    log(f"{gen}: saved {out} ({len(m)} files)")
+    return m, total
+
+
+# -----------------------------------------------------------------------------
+# Duplicates and train/test leakage in the extracted subset
+# -----------------------------------------------------------------------------
+def duplicate_pairs(df: pd.DataFrame, near_threshold: int) -> pd.DataFrame:
+    """Exact (same md5) and near (pHash Hamming <= threshold) duplicate pairs.
+
+    df needs: sample_id, generator, role, label, md5, phash (hex). One row per pair,
+    with both sides' info and a 'roles' column like 'test-train'.
+    """
+    from itertools import combinations
+    from .image_utils import near_duplicate_pairs
+    df = df.reset_index(drop=True)
+    pairs = []
+    for _, g in df.groupby("md5"):
+        if len(g) > 1:
+            pairs += [(a, b, 0, "exact") for a, b in combinations(sorted(g.index), 2)]
+    pairs += [(i, j, d, "near") for i, j, d in near_duplicate_pairs(df["phash"].tolist(), near_threshold)]
+    cols = ["i", "j", "hamming", "kind"]
+    p = pd.DataFrame(pairs, columns=cols).drop_duplicates(["i", "j"], keep="first")
+    for side, col in (("a", "i"), ("b", "j")):
+        for c in ["sample_id", "generator", "role", "label"]:
+            p[f"{side}_{c}"] = df.loc[p[col], c].to_numpy()
+    p["roles"] = ["-".join(sorted(x)) for x in zip(p["a_role"], p["b_role"])]
+    p["same_generator"] = p["a_generator"] == p["b_generator"]
+    return p.drop(columns=["i", "j"]).reset_index(drop=True)
+
+
+def leaking_test_ids(pairs: pd.DataFrame) -> set:
+    """Test images that are an exact or near duplicate of ANY training image."""
+    tt = pairs.loc[pairs["roles"] == "test-train"]
+    ids = set(tt.loc[tt["a_role"] == "test", "a_sample_id"]) | set(tt.loc[tt["b_role"] == "test", "b_sample_id"])
+    return ids

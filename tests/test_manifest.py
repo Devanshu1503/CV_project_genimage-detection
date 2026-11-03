@@ -87,3 +87,22 @@ def test_filename_leakage_report():
     # Same 40 nature filenames in both generators, and in both train and val.
     assert rep["summary"]["in_more_than_one_generator"] == 40
     assert rep["summary"]["in_both_train_and_val"] == 40
+
+
+def test_duplicate_pairs_and_leakage():
+    from src.manifest import duplicate_pairs, leaking_test_ids
+    df = pd.DataFrame({
+        "sample_id": ["tr1", "tr2", "te1", "te2", "te3"],
+        "generator": ["sd", "sd", "adm", "adm", "glide"],
+        "role": ["train", "train", "test", "test", "test"],
+        "label": ["nature"] * 5,
+        "md5": ["m1", "m2", "m1", "m3", "m4"],                # te1 is an exact copy of tr1
+        "phash": ["ffffffffffffffff", "0000000000000000", "ffffffffffffffff",
+                  "00000000000000ff", "000000000000000f"],    # te2/te3 near tr2 (8 and 4 bits)
+    })
+    p = duplicate_pairs(df, near_threshold=4)
+    kinds = dict(zip(zip(p.a_sample_id, p.b_sample_id), p.kind))
+    assert kinds[("tr1", "te1")] == "exact"
+    assert kinds[("tr2", "te3")] == "near"
+    assert ("tr2", "te2") not in kinds                       # 8 bits apart > threshold
+    assert leaking_test_ids(p) == {"te1", "te3"}
