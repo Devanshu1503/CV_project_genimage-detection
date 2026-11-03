@@ -75,3 +75,25 @@ def feature_transforms(kind: str, size: int = 224):
     mean, std = (CLIP_MEAN, CLIP_STD) if kind == "clip" else (IMAGENET_MEAN, IMAGENET_STD)
     return T.Compose([T.Resize(size, interpolation=T.InterpolationMode.BICUBIC),
                       T.CenterCrop(size), T.ToTensor(), T.Normalize(mean, std)])
+
+
+def stage_locally(relpaths, src_root: str | Path, dst_root: str | Path, n_threads: int = 16) -> int:
+    """Copy the given files from src_root (Drive) to dst_root (local disk), skipping existing ones.
+
+    Reading ~18k small files from Google Drive inside a training loop is slow;
+    one up-front copy to the Colab VM's disk makes every epoch fast.
+    Returns the number of files copied.
+    """
+    import shutil
+    from concurrent.futures import ThreadPoolExecutor
+    from tqdm.auto import tqdm
+    src_root, dst_root = Path(src_root), Path(dst_root)
+    todo = [r for r in relpaths if not (dst_root / r).exists()]
+
+    def copy(rel):
+        (dst_root / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src_root / rel, dst_root / rel)
+
+    with ThreadPoolExecutor(n_threads) as ex:
+        list(tqdm(ex.map(copy, todo), total=len(todo), desc="copy to local disk"))
+    return len(todo)
