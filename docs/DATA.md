@@ -36,7 +36,10 @@ Colab's disk (~80 GB) can't hold even one generator, and our Drive has ~10 GB fr
 1. `7z l -slt <base>.zip` lists the archive **in place** on the Drive mount (it reads only the central
    directory). The text output is parsed into a manifest (`manifests/manifest_<generator>.csv.gz`).
 2. We sample from the manifests.
-3. `7z x <base>.zip -i@<list>` extracts **only** the sampled files to local disk, in batches. Metadata
+3. `7z x <base>.zip -i@<list>` extracts **only** the sampled files to local disk, in batches, with several 7z processes in parallel (`seven_zip.extract_workers`). Optionally a whole
+   generator's archive is first copied to the Colab disk (`seven_zip.copy_local_generators`, only if it fits with
+   `local_copy_margin_gb` to spare) and deleted afterwards, since random reads from Drive are slow (~1.5 s/image
+   measured with a single 7z process). Metadata
    is computed on the local copy, then the **original bytes** are copied to `raw_subset/` on Drive.
 
 Manifests are stored gzip-compressed (`.csv.gz`, read transparently by pandas) because they hold

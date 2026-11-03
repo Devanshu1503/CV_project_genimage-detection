@@ -215,12 +215,41 @@ def extract_files(zip_path: str | Path, inner_paths: list[str], out_dir: str | P
             "returncode": res.returncode, "stderr": res.stderr.strip()}
 
 
+def _chunks(items: list, n_chunks: int, max_size: int) -> list[list]:
+    """Split into contiguous chunks, at least n_chunks, each <= max_size."""
+    if not items:
+        return []
+    size = max(1, min(max_size, -(-len(items) // max(n_chunks, 1))))
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def parallel_extract(zip_path: str | Path, inner_paths: list[str], out_dir: str | Path, workers: int = 4,
+                     binary: str = "auto", timeout: int | None = None) -> dict:
+    """Extract with several 7z processes at once (one temp dir each), used by the benchmark."""
+    from concurrent.futures import ThreadPoolExecutor
+    out_dir = Path(out_dir)
+    chunks = _chunks(sorted(inner_paths), workers, len(inner_paths))
+    t0 = time.time()
+    with ThreadPoolExecutor(max(workers, 1)) as ex:
+        results = list(ex.map(lambda kc: extract_files(zip_path, kc[1], out_dir / f"w{kc[0]}", binary, timeout),
+                              enumerate(chunks)))
+    found = [f for r in results for f in r["found"]]
+    missing = [f for r in results for f in r["missing"]]
+    return {"seconds": time.time() - t0, "found": found, "missing": missing}
+
+
 def extract_sample_to_drive(sample: pd.DataFrame, zip_path: str | Path, work_dir: str | Path,
                             dest_root: str | Path, batch_size: int = 1000, binary: str = "auto",
                             timeout: int | None = None,
                             on_file: Callable[[Path, pd.Series], dict] | None = None,
-                            logger=None, progress: bool = True) -> tuple[pd.DataFrame, list[dict]]:
-    """Extract one generator's sample and copy it to Drive (skips files already there)."""
+                            logger=None, progress: bool = True, workers: int = 1) -> tuple[pd.DataFrame, list[dict]]:
+    """Extract one generator's sample and copy it to Drive (skips files already there).
+
+    Files are sorted by inner_path and chunked, `workers` 7z processes run at once,
+    each into its own temp dir.
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from tqdm.auto import tqdm
 
     log = logger.info if logger else print
@@ -230,15 +259,18 @@ def extract_sample_to_drive(sample: pd.DataFrame, zip_path: str | Path, work_dir
     done_mask = rows.apply(lambda r: r["dest"].exists() and
                            r["dest"].stat().st_size == int(r["uncompressed_bytes"]), axis=1)
     status = [{"sample_id": s, "status": "already_done"} for s in rows.loc[done_mask, "sample_id"]]
-    todo = rows.loc[~done_mask]
-    log(f"  {len(rows)} files sampled | {done_mask.sum()} already on Drive | {len(todo)} to extract")
+    todo = rows.loc[~done_mask].sort_values("inner_path")
+    log(f"  {len(rows)} files sampled | {done_mask.sum()} already on Drive | {len(todo)} to extract "
+        f"| {workers} worker(s)")
     extra: list[dict] = []
     if todo.empty:
         return pd.DataFrame(status), extra
 
-    batches = [todo.iloc[i:i + batch_size] for i in range(0, len(todo), batch_size)]
-    for bi, batch in enumerate(tqdm(batches, desc="7z batches", disable=not progress)):
-        tmp = work_dir / f"_extract_batch"
+    lock = threading.Lock()
+    batches = [todo.iloc[idx] for idx in _chunks(list(range(len(todo))), workers, batch_size)]
+
+    def run_batch(bi, batch):
+        tmp = work_dir / f"_extract_batch_{bi}"
         if tmp.exists():
             shutil.rmtree(tmp)
         res = extract_files(zip_path, batch["inner_path"].tolist(), tmp, binary, timeout)
@@ -247,23 +279,86 @@ def extract_sample_to_drive(sample: pd.DataFrame, zip_path: str | Path, work_dir
             f"{mb:.0f} MB in {res['seconds']:.0f}s ({mb / max(res['seconds'], 1e-6):.1f} MB/s)")
         if res["returncode"] == 1:
             log(f"  7z WARNING: {res['stderr'][-500:]}")
+        st, ex_rows = [], []
         for _, r in batch.iterrows():
             src = tmp / r["inner_path"]
             if not src.exists():
-                status.append({"sample_id": r["sample_id"], "status": "missing_after_extract"})
+                st.append({"sample_id": r["sample_id"], "status": "missing_after_extract"})
                 continue
             if on_file is not None:
                 try:
                     info = on_file(src, r) or {}
                     info["sample_id"] = r["sample_id"]
-                    extra.append(info)
+                    ex_rows.append(info)
                 except Exception as e:  # log it, don't skip silently
-                    extra.append({"sample_id": r["sample_id"], "on_file_error": repr(e)})
+                    ex_rows.append({"sample_id": r["sample_id"], "on_file_error": repr(e)})
             dest = r["dest"]
             dest.parent.mkdir(parents=True, exist_ok=True)
             part = dest.with_name(dest.name + ".part")
             shutil.copyfile(src, part)  # original bytes
             part.replace(dest)  # no half-written files
-            status.append({"sample_id": r["sample_id"], "status": "extracted"})
+            st.append({"sample_id": r["sample_id"], "status": "extracted"})
         shutil.rmtree(tmp, ignore_errors=True)
+        with lock:
+            status.extend(st)
+            extra.extend(ex_rows)
+
+    with ThreadPoolExecutor(max(workers, 1)) as ex:
+        futs = [ex.submit(run_batch, bi, b) for bi, b in enumerate(batches)]
+        for f in tqdm(as_completed(futs), total=len(futs), desc="7z batches", disable=not progress):
+            f.result()  # re-raise worker errors
     return pd.DataFrame(status), extra
+
+
+# Optional: copy a whole archive to local disk first (faster than reading Drive)
+def archive_part_files(zip_path: str | Path) -> list[Path]:
+    """All .zNN parts plus the .zip of one archive."""
+    zip_path = Path(zip_path)
+    base = zip_path.name[:-4]
+    parts = []
+    for p in zip_path.parent.iterdir():
+        m = _PART_RE.match(p.name)
+        if m and m.group("base") == base and p != zip_path:
+            parts.append(p)
+    return sorted(parts, key=lambda p: int(p.suffix[2:])) + [zip_path]
+
+
+def copy_file_timed(src: str | Path, dst: str | Path, chunk_mb: int = 16) -> float:
+    """Copy one file (via .part), returns MB/s."""
+    src, dst = Path(src), Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_name(dst.name + ".part")
+    t0 = time.time()
+    with open(src, "rb") as fi, open(tmp, "wb") as fo:
+        shutil.copyfileobj(fi, fo, chunk_mb << 20)
+    tmp.replace(dst)
+    return src.stat().st_size / 1e6 / max(time.time() - t0, 1e-6)
+
+
+def copy_archive_local(zip_path: str | Path, dest_dir: str | Path, margin_gb: float = 15.0,
+                       logger=None) -> Path | None:
+    """Copy parts + .zip to dest_dir and return the local .zip, or None if the disk is too small.
+
+    Parts already there with the right size are skipped (resumable).
+    """
+    log = logger.info if logger else print
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    files = archive_part_files(zip_path)
+    todo = [f for f in files if not ((dest_dir / f.name).exists()
+                                     and (dest_dir / f.name).stat().st_size == f.stat().st_size)]
+    need_gb = sum(f.stat().st_size for f in todo) / 1e9
+    free_gb = shutil.disk_usage(dest_dir).free / 1e9
+    if need_gb > free_gb - margin_gb:
+        log(f"  NOT copying locally: need {need_gb:.1f} GB, free {free_gb:.1f} GB "
+            f"(keeping {margin_gb} GB spare). Falling back to parallel extraction from Drive.")
+        return None
+    log(f"  copying {len(todo)}/{len(files)} archive files ({need_gb:.1f} GB) to {dest_dir}")
+    t0 = time.time()
+    for i, f in enumerate(todo):
+        mbps = copy_file_timed(f, dest_dir / f.name)
+        log(f"  [{i + 1}/{len(todo)}] {f.name}: {f.stat().st_size / 1e9:.2f} GB at {mbps:.0f} MB/s")
+    if todo:
+        secs = max(time.time() - t0, 1e-6)
+        log(f"  copy done: {need_gb:.1f} GB in {secs / 60:.1f} min ({need_gb * 1e3 / secs:.0f} MB/s)")
+    return dest_dir / Path(zip_path).name

@@ -35,6 +35,9 @@ seven_zip:
   list_timeout_sec: 3600
   extract_timeout_sec: 7200
   extract_batch_size: 1000     # files per 7z call
+  extract_workers: 6           # parallel 7z processes
+  copy_local_generators: []    # e.g. [stable_diffusion_v_1_4], copy archive to local disk first
+  local_copy_margin_gb: 15     # disk to keep free when copying locally
   speed_test_n_per_label: 50
 
 sampling:

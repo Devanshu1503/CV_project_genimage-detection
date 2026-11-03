@@ -74,8 +74,10 @@ to `/content/CV_project_genimage-detection` (or `git pull`s it if it's already t
 - **Every notebook starts with the same setup cell.** It clones or pulls the repo, mounts Drive,
   installs only *missing* packages from `requirements-colab.txt` (Colab's preinstalled torch, numpy,
   pandas etc. are never reinstalled or upgraded) plus `p7zip-full` via apt, sets seeds and prints GPU info.
-- **Notebook 01:** run it once with the default `RUN_EXTRACTION = False`. Check the size estimate
-  (step 10), then set `RUN_EXTRACTION = True` and run all again.
+- **Notebook 01:** first run with `RUN_BENCHMARK = True` (step 4b). It times parallel 7z with 1/4/8 workers and
+  copying an archive part to local disk, then prints which `seven_zip.extract_workers` /
+  `seven_zip.copy_local_generators` to put in `configs/config.yaml`. Push that config change, then set
+  `RUN_EXTRACTION = True` and run all again (check the size estimate in step 10 first).
 - **Notebook 03:** switch the runtime first with *Runtime → Change runtime type → T4 GPU*.
 - **Everything is resumable.** After a Colab disconnect, just *Run all* again; finished work is skipped,
   and ResNet training resumes from `checkpoints/resnet50/last.pt`.
