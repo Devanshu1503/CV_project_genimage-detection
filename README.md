@@ -82,6 +82,16 @@ to `/content/CV_project_genimage-detection` (or `git pull`s it if it's already t
 - **Everything is resumable.** After a Colab disconnect, just *Run all* again; finished work is skipped,
   and ResNet training resumes from `checkpoints/resnet50/last.pt`.
 
+## Colab + Drive rules
+
+Drive on Colab uploads writes in the background, and a new session can miss files the old one wrote.
+
+- Never "Disconnect and delete runtime" while files are being written to Drive.
+- If something hangs, use Runtime > Interrupt execution instead.
+- Run the last cell of each notebook ("Run before closing the tab", `flush_drive()`) before closing.
+- If files seem missing, open Drive in the browser and look for duplicate folders with the same name
+  (e.g. two `raw_subset/`). Merge them by hand, Colab can't see the duplicates.
+
 ## Local development (no data needed)
 
 ```bash

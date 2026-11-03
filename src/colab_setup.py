@@ -13,6 +13,16 @@ import numpy as np
 from .config import ensure_dirs, get_paths, is_colab, load_config, REPO_ROOT
 
 
+def flush_drive() -> None:
+    """Push pending Drive writes and unmount (Colab only), run before closing the tab."""
+    if not is_colab():
+        print("[flush] Not in Colab: nothing to flush.")
+        return
+    from google.colab import drive  # type: ignore
+    drive.flush_and_unmount()
+    print("[flush] Drive flushed and unmounted, safe to close the tab.")
+
+
 def mount_drive() -> None:
     """Mount Drive (Colab only)."""
     if not is_colab():

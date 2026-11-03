@@ -33,7 +33,7 @@ train_generator: stable_diffusion_v_1_4
 seven_zip:
   binary: auto                 # tries 7z, 7zz, 7za
   list_timeout_sec: 3600
-  extract_timeout_sec: 7200
+  extract_timeout_sec: 2400     # per 7z batch call, 7z is killed after this
   extract_batch_size: 1000     # files per 7z call
   extract_workers: 6           # parallel 7z processes
   copy_local_generators: []    # e.g. [stable_diffusion_v_1_4], copy archive to local disk first
