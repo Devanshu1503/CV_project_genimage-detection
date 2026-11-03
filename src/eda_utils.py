@@ -129,7 +129,7 @@ def plot_spectra(spectra: dict, reference: str | None = None, ncols: int = 5, ti
         ax = axes[r * rows, c]
         ax.imshow(spectra[k], cmap="viridis", vmin=vmin, vmax=vmax)
         ax.set_title(k, fontsize=9)
-        if reference:
+        if reference and k != reference:
             ax2 = axes[r * rows + 1, c]
             diff = spectra[k] - spectra[reference]
             lim = np.percentile(np.abs(diff), 99.5) + 1e-9
