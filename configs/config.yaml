@@ -1,0 +1,139 @@
+# =============================================================================
+# Central configuration for the GenImage real-vs-fake detection project.
+# EVERY path, seed, sample size and hyperparameter lives here.
+# Code must never hardcode these values: always read them via src/config.py.
+# =============================================================================
+
+project:
+  name: genimage-detection
+  seed: 42
+
+# -----------------------------------------------------------------------------
+# Paths. src/config.py picks the "colab" or "local" block automatically.
+# Relative local paths are resolved against the repo root.
+# -----------------------------------------------------------------------------
+paths:
+  colab:
+    # Read-only GenImage split zips (a Drive shortcut in MyDrive).
+    genimage_root: /content/drive/MyDrive/genimage
+    # Small project output folder on Drive (shared with teammates).
+    project_root: /content/drive/MyDrive/genimage_project
+    # Fast local scratch disk on the Colab VM (wiped when the runtime resets).
+    work_dir: /content/work
+  local:
+    genimage_root: data/genimage
+    project_root: data/genimage_project
+    work_dir: data/work
+
+# Sub-folders created inside project_root.
+project_subdirs: [manifests, raw_subset, processed, features, checkpoints, results, figures, logs]
+
+# -----------------------------------------------------------------------------
+# Generators: "folder" is the exact sub-folder name under genimage_root,
+# "name" is a short display name for plots/tables.
+# Archive base names inside each folder are DISCOVERED at runtime, never set here.
+# -----------------------------------------------------------------------------
+generators:
+  - {folder: stable_diffusion_v_1_4, name: SD1.4}
+  - {folder: stable_diffusion_v_1_5, name: SD1.5}
+  - {folder: Midjourney, name: Midjourney}
+  - {folder: wukong, name: Wukong}
+  - {folder: ADM, name: ADM}
+  - {folder: glide, name: GLIDE}
+  - {folder: VQDM, name: VQDM}
+  - {folder: BigGAN, name: BigGAN}
+
+# The only generator whose images are used for training in Problem 1.
+train_generator: stable_diffusion_v_1_4
+
+# -----------------------------------------------------------------------------
+# 7-Zip
+# -----------------------------------------------------------------------------
+seven_zip:
+  # "auto" tries 7z, then 7zz, then 7za. Set an explicit binary path to override.
+  binary: auto
+  list_timeout_sec: 3600
+  extract_timeout_sec: 7200
+  # Number of files passed to one `7z x -i@list` call. Each call re-reads the
+  # archive's central directory, so bigger batches are faster but less granular.
+  extract_batch_size: 1000
+  speed_test_n_per_label: 50
+
+# -----------------------------------------------------------------------------
+# Sampling (notebook 01)
+# -----------------------------------------------------------------------------
+sampling:
+  train_split_name: train      # archive split used for the training pool
+  test_split_name: val         # archive split used for every generator's test set
+  train_per_label: 5000        # SD1.4 train: 5000 ai + 5000 nature
+  test_per_label: 500          # each generator val: 500 ai + 500 nature
+  stratify_by_class: true
+  drive_budget_gb: 6.0         # max raw bytes we allow ourselves to copy to Drive
+
+# -----------------------------------------------------------------------------
+# Duplicate detection (notebook 01, step 12)
+# -----------------------------------------------------------------------------
+dedup:
+  phash_size: 8                # 8x8 DCT -> 64-bit perceptual hash
+  near_dup_hamming: 4          # Hamming distance <= this counts as near-duplicate
+  n_threads: 8
+
+# -----------------------------------------------------------------------------
+# Preprocessing (notebook 02). Identical pipeline for real AND fake images.
+# -----------------------------------------------------------------------------
+preprocess:
+  image_size: 224
+  resample: bicubic
+  jpeg_quality: 96             # ~ the dominant quality of the real ImageNet JPEGs
+  jpeg_subsampling: "4:2:0"
+  n_threads: 8
+
+# -----------------------------------------------------------------------------
+# EDA (notebook 02)
+# -----------------------------------------------------------------------------
+eda:
+  pixel_stats_per_group: 300   # images sampled per (generator, label) for pixel stats
+  pixel_stats_max_side: 256    # downscale before stats for speed
+  fft_crop: 128                # center crop (no resize) before FFT; BigGAN is 128 px
+  fft_per_group: 200
+  grid_n: 8
+  cv_folds: 5
+
+# -----------------------------------------------------------------------------
+# Train / val split of the SD1.4 training pool (notebook 02)
+# -----------------------------------------------------------------------------
+split:
+  val_fraction: 0.2
+
+# -----------------------------------------------------------------------------
+# Models (notebook 03)
+# -----------------------------------------------------------------------------
+models:
+  clip:
+    hf_id: openai/clip-vit-large-patch14
+  dinov2:
+    hf_id: facebook/dinov2-base
+
+features:
+  batch_size: 64
+  shard_size: 2000             # embeddings are cached in shards -> resumable
+  num_workers: 2
+
+training:
+  copy_processed_to_local: true   # copy processed/ to work_dir before training (faster IO)
+  resnet50:
+    weights: IMAGENET1K_V2
+    epochs: 5
+    batch_size: 64
+    lr: 0.0001
+    weight_decay: 0.0001
+    crop_size: 192               # random crop (train) / center crop (eval), NO resizing
+    early_stopping_patience: 2
+    num_workers: 2
+    amp: true
+  linear_probe:
+    C_grid: [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0]
+    max_iter: 5000
+
+evaluation:
+  threshold: 0.5               # probability threshold for accuracy / F1 / confusion matrix
