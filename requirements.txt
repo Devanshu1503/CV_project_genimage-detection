@@ -1,5 +1,6 @@
-# Lower bounds only: Colab already ships torch/torchvision/transformers etc., and
-# pinning exact versions would force slow re-installs (or break Colab's CUDA torch).
+# LOCAL development dependencies (lower bounds only).
+# On Colab, src/colab_setup.py uses requirements-colab.txt instead and installs only
+# packages that are missing; it never reinstalls/upgrades Colab's torch, numpy, etc.
 # System dependency (installed by src/colab_setup.py via apt): p7zip-full
 numpy>=1.24
 pandas>=2.0

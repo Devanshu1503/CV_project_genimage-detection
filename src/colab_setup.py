@@ -3,7 +3,8 @@
 The notebook's first cell clones/pulls the repo (it has to, because src/ is not
 importable before the repo exists), then calls `setup()` from here, which:
   1. mounts Google Drive (Colab only),
-  2. installs Python deps from requirements.txt and apt packages (p7zip-full),
+  2. installs ONLY MISSING Python packages (requirements-colab.txt on Colab,
+     requirements.txt locally; nothing is upgraded) and apt p7zip-full,
   3. sets all random seeds,
   4. prints GPU info,
   5. loads the config, resolves paths and creates the output folders.
@@ -34,18 +35,48 @@ def mount_drive() -> None:
     drive.mount("/content/drive")
 
 
+# pip name -> import name, for packages where the two differ.
+_IMPORT_NAMES = {"pyyaml": "yaml", "pillow": "PIL", "scikit-learn": "sklearn",
+                 "opencv-python": "cv2", "imagehash": "imagehash", "open_clip_torch": "open_clip"}
+
+
+def _requirement_names(req_file) -> list[str]:
+    """Package names from a requirements file (comments and version specifiers removed)."""
+    import re
+    names = []
+    for line in open(req_file, encoding="utf-8"):
+        line = line.split("#", 1)[0].strip()
+        if line:
+            names.append(re.split(r"[<>=!~\[; ]", line, maxsplit=1)[0])
+    return names
+
+
+def missing_packages(req_file) -> list[str]:
+    """Requirements that are NOT importable in this environment."""
+    import importlib.util
+    return [n for n in _requirement_names(req_file)
+            if importlib.util.find_spec(_IMPORT_NAMES.get(n.lower(), n.replace("-", "_"))) is None]
+
+
 def install_requirements(apt_packages: list[str] | None = None, quiet: bool = True) -> None:
-    """pip install requirements.txt and (Colab only) apt packages."""
-    req = REPO_ROOT / "requirements.txt"
+    """Install only what is missing; never upgrade what is already there.
+
+    Colab: requirements-colab.txt (torch, numpy, pandas, ... are preinstalled and are
+    deliberately left alone, so Colab's CUDA build of torch is never replaced).
+    Local: requirements.txt. Plus apt packages (Colab only).
+    """
+    req = REPO_ROOT / ("requirements-colab.txt" if is_colab() else "requirements.txt")
     if req.exists():
-        cmd = [sys.executable, "-m", "pip", "install", "-r", str(req)]
-        if quiet:
-            cmd.insert(4, "-q")
-        print("[setup] pip install -r requirements.txt ...")
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            print(res.stdout[-3000:], res.stderr[-3000:])
-            raise RuntimeError("pip install failed (see output above).")
+        missing = missing_packages(req)
+        if missing:
+            print(f"[setup] pip install (missing only): {missing}")
+            cmd = [sys.executable, "-m", "pip", "install", *(["-q"] if quiet else []), *missing]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                print(res.stdout[-3000:], res.stderr[-3000:])
+                raise RuntimeError("pip install failed (see output above).")
+        else:
+            print(f"[setup] all packages in {req.name} already installed (nothing reinstalled).")
     if apt_packages and is_colab():
         missing = [p for p in apt_packages if not _apt_installed(p)]
         if missing:

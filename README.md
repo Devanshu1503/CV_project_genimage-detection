@@ -2,6 +2,8 @@
 
 UChicago MSADS · Advanced Computer Vision (ADSP 31023) · Team project
 
+**Repo:** https://github.com/Devanshu1503/CV_project_genimage-detection
+
 **Team:** _Name 1 · Name 2 · Name 3 · Name 4_ (fill in)
 
 ## Overview
@@ -60,18 +62,18 @@ read **in place** with 7-Zip.
 
 ## How to run (Google Colab, in order)
 
-First, put your GitHub repo URL in the `REPO_URL` line of the **first cell** of each notebook
-(or open the notebook from GitHub in Colab: *File → Open notebook → GitHub*). If the repo is private,
-clone with a personal access token or make it public.
+Click a badge to open the notebook straight from GitHub in Colab. The first cell clones the repo
+to `/content/CV_project_genimage-detection` (or `git pull`s it if it's already there).
 
-| # | Notebook | Runtime | What it does | Main outputs |
+| # | Notebook | Open | Runtime | What it does | Main outputs |
 |---|---|---|---|---|
-| 1 | [01_build_dataset](notebooks/01_build_dataset.ipynb) | CPU | list archives in place, sample, extract only the sample, dedup/leakage checks | `manifests/subset_index.csv`, `raw_subset/` |
-| 2 | [02_eda_and_preprocess](notebooks/02_eda_and_preprocess.ipynb) | CPU | EDA + bias measurement, shared preprocessing, train/val/test split | `processed/`, `manifests/processed_index.csv`, `manifests/splits.csv`, `figures/02_*` |
-| 3 | [03_problem1_baselines](notebooks/03_problem1_baselines.ipynb) | **T4 GPU** | CLIP/DINOv2 linear probes vs fine-tuned ResNet-50, per-generator evaluation | `results/problem1_*.csv`, `checkpoints/`, `figures/03_*` |
+| 1 | [01_build_dataset](notebooks/01_build_dataset.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/01_build_dataset.ipynb) | CPU | list archives in place, sample, extract only the sample, dedup/leakage checks | `manifests/subset_index.csv`, `raw_subset/` |
+| 2 | [02_eda_and_preprocess](notebooks/02_eda_and_preprocess.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/02_eda_and_preprocess.ipynb) | CPU | EDA + bias measurement, shared preprocessing, train/val/test split | `processed/`, `manifests/processed_index.csv`, `manifests/splits.csv`, `figures/02_*` |
+| 3 | [03_problem1_baselines](notebooks/03_problem1_baselines.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/03_problem1_baselines.ipynb) | **T4 GPU** | CLIP/DINOv2 linear probes vs fine-tuned ResNet-50, per-generator evaluation | `results/problem1_*.csv`, `checkpoints/`, `figures/03_*` |
 
 - **Every notebook starts with the same setup cell.** It clones or pulls the repo, mounts Drive,
-  installs dependencies (including `p7zip-full`), sets seeds and prints GPU info.
+  installs only *missing* packages from `requirements-colab.txt` (Colab's preinstalled torch, numpy,
+  pandas etc. are never reinstalled or upgraded) plus `p7zip-full` via apt, sets seeds and prints GPU info.
 - **Notebook 01:** run it once with the default `RUN_EXTRACTION = False`. Check the size estimate
   (step 10), then set `RUN_EXTRACTION = True` and run all again.
 - **Notebook 03:** switch the runtime first with *Runtime → Change runtime type → T4 GPU*.
@@ -81,6 +83,8 @@ clone with a personal access token or make it public.
 ## Local development (no data needed)
 
 ```bash
+git clone https://github.com/Devanshu1503/CV_project_genimage-detection.git
+cd CV_project_genimage-detection
 pip install -r requirements.txt
 python -m pytest -q          # tests for parsing, sampling, preprocessing, metrics, training smoke test
 ```

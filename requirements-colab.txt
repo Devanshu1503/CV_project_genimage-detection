@@ -1,0 +1,11 @@
+# Packages that src/colab_setup.py installs on Colab ONLY IF THEY ARE MISSING.
+# Nothing here is ever upgraded: if a package is already importable, it is skipped.
+#
+# Deliberately NOT listed (Colab preinstalls them, and reinstalling could break the
+# CUDA build of torch): torch, torchvision, numpy, pandas, scikit-learn, matplotlib,
+# pillow, scipy, seaborn.
+#
+# System dependency installed via apt (not pip): p7zip-full  (provides the `7z` command)
+pyyaml
+tqdm
+transformers

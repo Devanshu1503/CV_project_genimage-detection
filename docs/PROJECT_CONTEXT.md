@@ -10,6 +10,10 @@ detailed metrics, MLOps (deployment + maintenance), report, presentation.
 - Handoff checklist: docs/NEXT_STEPS.md. Dataset facts and preprocessing decisions: docs/DATA.md.
 
 ## Environment
+- Repo: https://github.com/Devanshu1503/CV_project_genimage-detection (branch `main`); Colab clones it to
+  `/content/CV_project_genimage-detection`.
+- Dependencies: `requirements.txt` (local) / `requirements-colab.txt` (Colab, installed only if missing:
+  never reinstall/upgrade Colab's torch, numpy, pandas, etc.).
 - Code is written locally (Windows, CPU), **run on Google Colab**. Data lives on Google Drive:
   - `/content/drive/MyDrive/genimage/<generator>/`: read-only split zips (`<base>.z01..zNN` + `<base>.zip`)
   - `/content/drive/MyDrive/genimage_project/`: our outputs (manifests, raw_subset, processed, features,
