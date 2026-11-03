@@ -66,7 +66,7 @@ Click a badge to open the notebook straight from GitHub in Colab. The first cell
 to `/content/CV_project_genimage-detection` (or `git pull`s it if it's already there).
 
 | # | Notebook | Open | Runtime | What it does | Main outputs |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | 1 | [01_build_dataset](notebooks/01_build_dataset.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/01_build_dataset.ipynb) | CPU | list archives in place, sample, extract only the sample, dedup/leakage checks | `manifests/subset_index.csv`, `raw_subset/` |
 | 2 | [02_eda_and_preprocess](notebooks/02_eda_and_preprocess.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/02_eda_and_preprocess.ipynb) | CPU | EDA + bias measurement, shared preprocessing, train/val/test split | `processed/`, `manifests/processed_index.csv`, `manifests/splits.csv`, `figures/02_*` |
 | 3 | [03_problem1_baselines](notebooks/03_problem1_baselines.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/03_problem1_baselines.ipynb) | **T4 GPU** | CLIP/DINOv2 linear probes vs fine-tuned ResNet-50, per-generator evaluation | `results/problem1_*.csv`, `checkpoints/`, `figures/03_*` |
