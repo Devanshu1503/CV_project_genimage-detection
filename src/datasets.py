@@ -14,7 +14,8 @@ CLIP_MEAN, CLIP_STD = (0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.261302
 def load_index(manifests_dir: str | Path) -> pd.DataFrame:
     """processed_index.csv + splits.csv."""
     manifests_dir = Path(manifests_dir)
-    idx = pd.read_csv(manifests_dir / "processed_index.csv")
+    # imagenet_class mixes ints and synsets, read as str (no DtypeWarning)
+    idx = pd.read_csv(manifests_dir / "processed_index.csv", dtype={"imagenet_class": str}, low_memory=False)
     splits = pd.read_csv(manifests_dir / "splits.csv")
     df = idx.merge(splits[["sample_id", "split_set"]], on="sample_id", how="inner", validate="1:1")
     return df.reset_index(drop=True)

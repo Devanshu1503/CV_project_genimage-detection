@@ -42,4 +42,33 @@ Results from our Colab runs. The executed notebooks with all outputs are in [exe
 
 ## Notebook 03: Problem 1 baselines
 
-In progress.
+All three models are trained on SD1.4 only. The table shows AUROC on each test set.
+
+| Generator | ResNet-50 | CLIP ViT-L/14 + LR | DINOv2 ViT-B/14 + LR |
+|---|---|---|---|
+| SD1.4 (seen) | 0.991 | 0.985 | 0.935 |
+| SD1.5 | 0.995 | 0.987 | 0.937 |
+| Midjourney | 0.833 | 0.930 | 0.870 |
+| Wukong | 0.989 | 0.946 | 0.914 |
+| ADM | 0.624 | 0.756 | 0.526 |
+| GLIDE | 0.615 | 0.871 | 0.721 |
+| VQDM | 0.613 | 0.735 | 0.584 |
+| BigGAN | 0.424 | 0.646 | 0.397 |
+| Mean unseen (7) | 0.728 | 0.839 | 0.707 |
+
+- On SD1.4 val, ResNet-50 got AUROC 0.993 and accuracy 0.968. Its val AUROC went up every epoch (0.985 -> 0.993), and the best was epoch 5. Each epoch took about 35 s on a T4.
+- The linear probes both picked C = 0.01. On SD1.4 val, CLIP got AUROC 0.989 / accuracy 0.942 and DINOv2 got 0.937 / 0.858.
+- All three models do well on SD1.4, SD1.5 and Wukong, which are similar latent diffusion models.
+- The CLIP challenger generalizes best, beating the ResNet-50 champion by 0.11 mean unseen AUROC. DINOv2 is weakest overall.
+- Real-image accuracy stays at 0.93-0.96 on every test set for ResNet and CLIP. The errors are fakes being called real.
+- ResNet's accuracy on fakes collapses on unseen generators:
+
+  | Generator | ResNet fake accuracy |
+  |---|---|
+  | ADM | 0.07 |
+  | GLIDE | 0.10 |
+  | VQDM | 0.11 |
+  | BigGAN | 0.01 |
+  | Midjourney | 0.45 |
+
+- BigGAN AUROC is below 0.5 for ResNet and DINOv2. This is likely because the 128 px BigGAN images get upscaled (blurred) and lack the high-frequency traces the models learned from SD.

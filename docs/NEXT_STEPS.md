@@ -6,7 +6,7 @@ Notebook 03 (Problem 1 baselines) is next. Before starting, read `README.md` (ho
 
 ## 0. Finish phase 1
 - [x] Run notebooks 01 and 02 on Colab, fill in their Findings cells and `docs/DATA.md`.
-- [ ] Run notebook 03 and fill in its Findings cell.
+- [x] Run notebook 03 and fill in its Findings cell.
 - [ ] Share `MyDrive/genimage_project` with all teammates (Editor). Each teammate adds a shortcut to it.
 - [ ] Copy the key figures and tables into the report draft (the EDA section is worth 15 pts).
 

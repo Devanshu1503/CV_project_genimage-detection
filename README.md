@@ -73,8 +73,9 @@ To run the tests locally: `pip install -r requirements.txt`, then `python -m pyt
 
 ## Status
 
-- Notebook 01 (dataset) and notebook 02 (EDA + preprocessing) are done. Results are in [docs/FINDINGS.md](docs/FINDINGS.md).
-- Notebook 03 (Problem 1 baselines) is in progress.
+- Notebook 01 (dataset) and notebook 02 (EDA + preprocessing) are done.
+- Notebook 03 (Problem 1 baselines) is done. Mean AUROC on the 7 unseen generators: CLIP + LR 0.839, ResNet-50 0.728, DINOv2 + LR 0.707.
+- All results are in [docs/FINDINGS.md](docs/FINDINGS.md).
 - Next up: Problem 2 (robustness) and the MLOps part. See [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md).
 
 ## Team
