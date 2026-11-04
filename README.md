@@ -1,112 +1,96 @@
-# Detecting AI-generated images: cross-generator generalisation on GenImage
+# Detecting AI-generated images on GenImage
 
-UChicago MSADS · Advanced Computer Vision (ADSP 31023) · Team project
+UChicago MSADS, Advanced Computer Vision (ADSP 31023), team project.
 
-**Repo:** https://github.com/Devanshu1503/CV_project_genimage-detection
+## What this is
 
-**Team:** _Name 1 · Name 2 · Name 3 · Name 4_ (fill in)
+We want to know if a fake-image detector trained on one generator still works on generators it has never seen. We train on Stable Diffusion 1.4 images only and test on all 8 generators in GenImage. We compare a fine-tuned ResNet-50 against frozen CLIP and DINOv2 features with a linear classifier on top, using AUROC per generator.
 
-## Overview
+Problem 2 (next) is about robustness: JPEG compression, resizing and new generators.
 
-A detector trained on one image generator usually fails on the next one. We study this on
-**GenImage** (Zhu et al., NeurIPS 2023, [arXiv 2306.08571](https://arxiv.org/abs/2306.08571)): real
-ImageNet photos plus fakes from 8 generators.
+## Data and why we sample it
 
-| | Problem | Competing models | Main metric |
-|---|---|---|---|
-| **1** | **Cross-generator detection.** Train real-vs-fake on Stable Diffusion v1.4 only, test on all 8 generators (7 unseen) | fine-tuned **ResNet-50** (champion) vs frozen **CLIP ViT-L/14** / **DINOv2 ViT-B/14** features + linear probe (challengers) | AUROC per generator (+ accuracy, F1, confusion matrices, ROC) |
-| **2** | **Robustness** (next phase). JPEG compression / resizing, new SDXL-Turbo fakes, retraining with augmentation | 2 competing models (see [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)) | AUROC drop under degradation |
+GenImage (Zhu et al. 2023) has real ImageNet photos plus fakes from 8 generators: SD1.4, SD1.5, Midjourney, Wukong, ADM, GLIDE, VQDM and BigGAN. It's about 656 GB of split zip files. That doesn't fit on Colab's disk or in our Drive, so we leave the zips on Drive and use 7z to pull out only the files we sample:
 
-**Known dataset bias.** In GenImage, real images are ImageNet JPEGs of varying size while fakes
-are PNGs at a fixed size per generator. A model can "cheat" by learning file format or size
-(Grommelt et al. 2024, *Fake or JPEG?*, [arXiv 2403.17608](https://arxiv.org/abs/2403.17608)).
-Notebook 02 **measures** this bias and **removes** it by re-encoding every image the same way.
-See [docs/DATA.md](docs/DATA.md).
+- SD1.4 train pool: 5000 real + 5000 fake
+- test: 500 real + 500 fake for each of the 8 generators
 
-## Repository layout
+That's 18,000 images, about 5 GB. We also check for leakage between train and test by filename and by image hash. Details are in [docs/DATA.md](docs/DATA.md).
 
-```
-configs/config.yaml   ALL paths, seeds, sample sizes, preprocessing and training settings
-src/                  importable code (notebooks stay thin)
-  config.py           load config, detect Colab vs local, resolve paths, logger
-  colab_setup.py      mount Drive, install deps (+ apt p7zip-full), seeds, GPU info
-  archive_utils.py    discover split zips, `7z l -slt` parsing, selective `7z x -i@list`
-  manifest.py         manifests, path parsing, sampling, leakage / duplicate checks
-  image_utils.py      metadata, JPEG-quality estimate, md5 + pHash, preprocessing, FFT
-  eda_utils.py        plots, pixel statistics, spectra, metadata shortcut test
-  datasets.py         PyTorch Dataset + transforms
-  models.py           ResNet-50, CLIP and DINOv2 feature extractors, feature caching
-  train.py            training loop (AMP, early stopping, resume), linear probe
-  evaluate.py         metrics, per-generator table, ROC / confusion / bar plots
-tests/                pytest suite that runs locally without data
-notebooks/            01 → 02 → 03, run on Google Colab
-docs/                 DATA.md (dataset & preprocessing decisions), NEXT_STEPS.md (handoff)
-```
+## The bias we found
 
-## Data access (one-time, per person)
+In GenImage every real image is a JPEG and every fake is a PNG at a fixed size per generator. This was pointed out by Grommelt et al. 2024. A model can just learn "JPEG means real" and never look at the actual image.
 
-The raw data is never copied in full. GenImage (~hundreds of GB) stays as split zips on Drive and is
-read **in place** with 7-Zip.
+We checked it ourselves. A small decision tree that only sees file metadata (format, width, height, file size, JPEG quality) gets 100% accuracy. So we preprocess every image the same way: RGB, center crop, resize to 224, save as JPEG quality 96. After that the same test drops to 50%, which is chance.
 
-1. **GenImage archives.** Make the GenImage folder (sub-folders `ADM`, `BigGAN`, `glide`, `Midjourney`,
-   `stable_diffusion_v_1_4`, `stable_diffusion_v_1_5`, `VQDM`, `wukong`) available as
-   `MyDrive/genimage`: right-click the shared folder → *Organize → Add shortcut* → My Drive, and name
-   the shortcut `genimage`.
-2. **Project outputs.** Notebook 01 creates `MyDrive/genimage_project/` (manifests, raw subset,
-   processed images, features, checkpoints, results, figures, logs; about 5–6 GB).
-   **The person who ran notebook 01 shares `genimage_project` with teammates** (Share → Editor).
-   Each teammate then adds a shortcut to it in *their* My Drive, named exactly `genimage_project`.
-   After that, teammates can start directly at notebook 02 or 03.
-3. Paths are set in [configs/config.yaml](configs/config.yaml) (`paths.colab`). Change them there if
-   your shortcuts have other names.
+## How to run
 
-## How to run (Google Colab, in order)
+All notebooks run on Google Colab. The first cell of each one does the setup:
 
-Click a badge to open the notebook straight from GitHub in Colab. The first cell clones the repo
-to `/content/CV_project_genimage-detection` (or `git pull`s it if it's already there).
+- clones or pulls this repo
+- mounts Drive
+- installs only the packages that are missing (it doesn't touch Colab's torch, numpy and so on)
+- sets the random seeds
 
-| # | Notebook | Open | Runtime | What it does | Main outputs |
-|---|---|---|---|---|---|
-| 1 | [01_build_dataset](notebooks/01_build_dataset.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/01_build_dataset.ipynb) | CPU | list archives in place, sample, extract only the sample, dedup/leakage checks | `manifests/subset_index.csv`, `raw_subset/` |
-| 2 | [02_eda_and_preprocess](notebooks/02_eda_and_preprocess.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/02_eda_and_preprocess.ipynb) | CPU | EDA + bias measurement, shared preprocessing, train/val/test split | `processed/`, `manifests/processed_index.csv`, `manifests/splits.csv`, `figures/02_*` |
-| 3 | [03_problem1_baselines](notebooks/03_problem1_baselines.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/03_problem1_baselines.ipynb) | **T4 GPU** | CLIP/DINOv2 linear probes vs fine-tuned ResNet-50, per-generator evaluation | `results/problem1_*.csv`, `checkpoints/`, `figures/03_*` |
+One-time Drive setup:
 
-- **Every notebook starts with the same setup cell.** It clones or pulls the repo, mounts Drive,
-  installs only *missing* packages from `requirements-colab.txt` (Colab's preinstalled torch, numpy,
-  pandas etc. are never reinstalled or upgraded) plus `p7zip-full` via apt, sets seeds and prints GPU info.
-- **Notebook 01:** first run with `RUN_BENCHMARK = True` (step 4b). It times parallel 7z with 1/4/8 workers and
-  copying an archive part to local disk, then prints which `seven_zip.extract_workers` /
-  `seven_zip.copy_local_generators` to put in `configs/config.yaml`. Push that config change, then set
-  `RUN_EXTRACTION = True` and run all again (check the size estimate in step 10 first).
-- **Notebook 03:** switch the runtime first with *Runtime → Change runtime type → T4 GPU*.
-- **Everything is resumable.** After a Colab disconnect, just *Run all* again; finished work is skipped,
-  and ResNet training resumes from `checkpoints/resnet50/last.pt`.
+1. Add a shortcut to the shared GenImage folder in your My Drive and name it `genimage`.
+2. Notebook 01 writes everything to `MyDrive/genimage_project/`. Whoever ran it shares that folder with the team. Everyone else adds a shortcut to it named `genimage_project`, and can then start at notebook 02 or 03.
+
+Paths are in [configs/config.yaml](configs/config.yaml) if your shortcuts have other names.
+
+| Notebook | Runtime | What it does |
+|---|---|---|
+| [01_build_dataset](notebooks/01_build_dataset.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/01_build_dataset.ipynb) | CPU | lists the zips, samples, extracts the sample, checks for duplicates and leakage |
+| [02_eda_and_preprocess](notebooks/02_eda_and_preprocess.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/02_eda_and_preprocess.ipynb) | CPU | EDA, bias checks, preprocessing, train/val/test split |
+| [03_problem1_baselines](notebooks/03_problem1_baselines.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/03_problem1_baselines.ipynb) | T4 GPU | CLIP and DINOv2 linear probes vs ResNet-50, results per generator |
+
+For notebook 03, pick Runtime > Change runtime type > T4 GPU first.
+
+Everything is resumable. If Colab disconnects, run all again and finished steps get skipped. ResNet training continues from its last checkpoint.
 
 ## Colab + Drive rules
 
-Drive on Colab uploads writes in the background, and a new session can miss files the old one wrote.
+Colab uploads Drive writes in the background, and a new session can miss files the old one wrote.
 
-- Never "Disconnect and delete runtime" while files are being written to Drive.
+- Don't use "Disconnect and delete runtime" while files are being written to Drive.
 - If something hangs, use Runtime > Interrupt execution instead.
-- Run the last cell of each notebook ("Run before closing the tab", `flush_drive()`) before closing.
-- If files seem missing, open Drive in the browser and look for duplicate folders with the same name
-  (e.g. two `raw_subset/`). Merge them by hand, Colab can't see the duplicates.
+- Run the last cell of each notebook ("Run before closing the tab") before you close the tab.
+- If files seem to be missing, open Drive in the browser and look for duplicate folders with the same name (for example two `raw_subset/` folders). Merge them by hand, because Colab can't see the duplicates.
 
-## Local development (no data needed)
+## Repo layout
 
-```bash
-git clone https://github.com/Devanshu1503/CV_project_genimage-detection.git
-cd CV_project_genimage-detection
-pip install -r requirements.txt
-python -m pytest -q          # tests for parsing, sampling, preprocessing, metrics, training smoke test
+```
+configs/config.yaml   all paths, sample sizes and hyperparameters
+src/                  the actual code, the notebooks just call it
+notebooks/            01, 02, 03 (clean, no outputs)
+executed_notebooks/   our Colab runs with outputs
+tests/                pytest, runs locally without the data
+docs/                 DATA.md, FINDINGS.md, NEXT_STEPS.md
 ```
 
-## Main references
+To run the tests locally: `pip install -r requirements.txt`, then `python -m pytest -q`.
 
-- Zhu et al. 2023, *GenImage: A Million-Scale Benchmark for Detecting AI-Generated Image*, arXiv 2306.08571
-- Grommelt et al. 2024, *Fake or JPEG? Revealing Common Biases in Generated Image Detection Datasets*, arXiv 2403.17608
-- Ojha et al. 2023, *Towards Universal Fake Image Detectors that Generalize Across Generative Models* (UnivFD), arXiv 2302.10174
-- Wang et al. 2020, *CNN-generated images are surprisingly easy to spot... for now*, arXiv 1912.11035
-- He et al. 2016 (ResNet), arXiv 1512.03385 · Radford et al. 2021 (CLIP), arXiv 2103.00020 · Oquab et al. 2023 (DINOv2), arXiv 2304.07193
-- Frank et al. 2020, *Leveraging Frequency Analysis for Deep Fake Image Recognition*, arXiv 2003.08685
-- Code/weights: [torchvision](https://pytorch.org/vision/stable/models.html), [HF openai/clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14), [HF facebook/dinov2-base](https://huggingface.co/facebook/dinov2-base), [7-Zip / p7zip](https://www.7-zip.org/)
+## Status
+
+- Notebook 01 (dataset) and notebook 02 (EDA + preprocessing) are done. Results are in [docs/FINDINGS.md](docs/FINDINGS.md).
+- Notebook 03 (Problem 1 baselines) is in progress.
+- Next up: Problem 2 (robustness) and the MLOps part. See [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md).
+
+## Team
+
+- Name 1
+- Name 2
+- Name 3
+- Name 4
+
+## References
+
+- Zhu et al. 2023, GenImage: A Million-Scale Benchmark for Detecting AI-Generated Image, arXiv 2306.08571
+- Grommelt et al. 2024, Fake or JPEG? Revealing Common Biases in Generated Image Detection Datasets, arXiv 2403.17608
+- Ojha et al. 2023, Towards Universal Fake Image Detectors that Generalize Across Generative Models, arXiv 2302.10174
+- Wang et al. 2020, CNN-generated images are surprisingly easy to spot... for now, arXiv 1912.11035
+- Frank et al. 2020, Leveraging Frequency Analysis for Deep Fake Image Recognition, arXiv 2003.08685
+- He et al. 2016 (ResNet), arXiv 1512.03385
+- Radford et al. 2021 (CLIP), arXiv 2103.00020
+- Oquab et al. 2023 (DINOv2), arXiv 2304.07193
