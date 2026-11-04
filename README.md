@@ -66,7 +66,7 @@ src/                  the actual code, the notebooks just call it
 notebooks/            01, 02, 03 (clean, no outputs)
 executed_notebooks/   our Colab runs with outputs
 tests/                pytest, runs locally without the data
-docs/                 DATA.md, FINDINGS.md, NEXT_STEPS.md
+docs/                 DATA.md, FINDINGS.md, NEXT_STEPS.md, PROJECT_CONTEXT.md
 ```
 
 To run the tests locally: `pip install -r requirements.txt`, then `python -m pytest -q`.

@@ -1,4 +1,4 @@
-# docs/PROJECT_CONTEXT.md: project context for AI coding assistants
+# Project context (for teammates and AI coding assistants)
 
 ## Project
 UChicago MSADS Advanced Computer Vision team project: **detecting AI-generated images** on GenImage
