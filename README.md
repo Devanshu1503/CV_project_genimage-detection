@@ -79,10 +79,11 @@ To run the tests locally: `pip install -r requirements.txt`, then `python -m pyt
 
 ## Team
 
-- Name 1
-- Name 2
-- Name 3
-- Name 4
+- Mahima Goyal
+- Devanshu Khadka
+- Sadaf Khan
+- Sameeksha Kini
+- Anuradha Rakh
 
 ## References
 
