@@ -101,3 +101,54 @@ training:
 
 evaluation:
   threshold: 0.5
+
+# Problem 1 extras (notebook 04)
+gradcam:
+  layer: layer4                # model.layer4[-1], 6x6 map at 192 px input
+  gallery_generators: [stable_diffusion_v_1_4, Midjourney, ADM, BigGAN]
+  n_per_cell: 4                # images per (generator, outcome) in the gallery
+  n_mean_per_generator: 100    # fakes + reals per generator for mean heatmaps / stats
+  deletion_frac: 0.2           # share of pixels blanked in the deletion test
+  batch_size: 32
+
+bootstrap:
+  n_boot: 1000
+  alpha: 0.05
+
+# Problem 2 (notebooks 06, 07, 08)
+problem2:
+  # name: [[kind, level], ...], applied to real AND fake test images
+  conditions:
+    clean: []
+    jpeg95: [[jpeg, 95]]
+    jpeg85: [[jpeg, 85]]
+    jpeg75: [[jpeg, 75]]
+    jpeg60: [[jpeg, 60]]
+    jpeg50: [[jpeg, 50]]
+    resize0.5: [[resize, 0.5]]   # down then back up to 224
+    resize0.75: [[resize, 0.75]]
+    resize1.5: [[resize, 1.5]]
+    blur1: [[blur, 1.0]]         # gaussian sigma
+    blur2: [[blur, 2.0]]
+    noise5: [[noise, 5]]         # std in 0-255 units
+    noise10: [[noise, 10]]
+    social: [[resize, 0.75], [jpeg, 75]]   # rough "re-uploaded" image
+  sdxl:
+    model_id: stabilityai/sdxl-turbo
+    n_images: 500
+    steps: 1                   # SDXL-Turbo is made for 1-4 steps
+    guidance: 0.0              # turbo is trained without CFG
+    size: 512
+    batch_size: 4
+    prompt_template: "a photo of a {}"
+    folder: sdxl_turbo
+    name: SDXL-Turbo
+    real_source: stable_diffusion_v_1_4   # reuse these 500 real test images
+  augment:                     # Wang et al. 2020 style, real and fake alike
+    p_blur: 0.5
+    blur_sigma: [0.1, 3.0]
+    p_resize: 0.5
+    resize_scale: [0.5, 1.5]
+    p_jpeg: 0.5
+    jpeg_quality: [60, 100]
+  probe_aug_copies: 2          # augmented feature copies per train image (+ the clean one)

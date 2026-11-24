@@ -59,6 +59,15 @@ Takeaways:
 - On unseen generators, real-image accuracy stays at 0.93-0.96. The errors are new fakes being called real (ResNet fake accuracy: ADM 0.07, GLIDE 0.10, VQDM 0.11, BigGAN 0.01).
 - BigGAN AUROC is below 0.5 for ResNet and DINOv2, likely because 128 px BigGAN images get upscaled (blurred) and lack the high-frequency traces learned from SD.
 
+## Notebooks 04, 06, 07, 08 (written, not yet run on Colab)
+
+- 04 Grad-CAM + bootstrap: own Grad-CAM (`src/gradcam.py`, checked against a manual computation in tests), gallery of caught/missed fakes on seen vs unseen generators, mean heatmaps, deletion test. Bootstrap CIs + paired bootstrap model differences (`src/stats.py`). Outputs: `results/problem1_extras/`, `figures/problem1_extras/`.
+- 06 degradation: 14 conditions in `config.yaml > problem2.conditions` (JPEG 95-50, resize 0.5/0.75/1.5 round trip, blur, noise, resize+JPEG "social"), applied to real and fake. Scores all 3 Problem 1 models. Clean condition is checked against Problem 1 numbers.
+- 07 SDXL-Turbo: 500 fakes, prompts/seeds in `problem2/sdxl_turbo/prompts.csv`, versions in `generation_meta.json`, same preprocessing, test index `problem2/sdxl_turbo/sdxl_index.csv` (reals = SD1.4 test reals).
+- 08 augmentation: ResNet-50 + random blur/resize/JPEG (champion) vs CLIP probe on clean + 2 augmented feature copies (challenger), plus both baselines, on GenImage + SDXL-Turbo under all conditions. Bootstrap CIs + paired tests on clean and "social".
+- Shared code: `src/degrade.py`, `src/robustness.py` (cached per model x test set x condition in `results/problem2/preds/`, CLIP features in `features/problem2/`), `src/generate.py`.
+- Order: 06 and 07 before 08.
+
 ## What is left
 
 Pick one workstream each. Suggested notebook names are there so we don't edit the same files.

@@ -9,3 +9,7 @@
 pyyaml
 tqdm
 transformers
+
+# Problem 2 (nb 07): SDXL-Turbo generation
+diffusers
+accelerate
