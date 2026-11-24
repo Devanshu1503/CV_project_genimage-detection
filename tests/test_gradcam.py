@@ -38,7 +38,7 @@ def test_helpers():
     st = cam_stats(cams)
     assert st["top_mass"].shape == (3,) and (st["center_mass"] <= 1).all()
     d = deletion_test(model, x, cams, frac=0.2)
-    assert set(d) == {"p_orig", "p_cam_masked", "p_rand_masked"} and d["p_orig"].shape == (3,)
+    assert set(d) == {"p_orig", "p_cam_masked", "p_box_masked", "p_pixels_masked"} and d["p_orig"].shape == (3,)
     img = to_uint8(x[0])
     assert img.shape == (64, 64, 3) and overlay(img, cams[0]).dtype == np.uint8
 

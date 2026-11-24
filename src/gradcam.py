@@ -91,22 +91,30 @@ def cam_stats(cams: np.ndarray, top_frac: float = 0.1, center_frac: float = 0.5)
 @torch.no_grad()
 def deletion_test(model: nn.Module, x: torch.Tensor, cams: np.ndarray, frac: float = 0.2,
                   seed: int = 42) -> dict:
-    """Blank the top-frac cam pixels vs the same number of random pixels.
-    If the cam is faithful, blanking it should change P(fake) more."""
+    """Blank the top-frac cam pixels and compare with two baselines of the same area:
+    a random square (fair baseline, one blob like the cam region) and random scattered pixels.
+    If the cam is faithful, blanking it should lower P(fake) more than the random square."""
     model.eval()
     b, _, h, w = x.shape
     n = int(round(frac * h * w))
     cam_t = torch.as_tensor(cams, device=x.device).reshape(b, -1)
-    top_idx = cam_t.topk(n, dim=1).indices
     g = torch.Generator(device="cpu").manual_seed(seed)
-    rnd_idx = torch.stack([torch.randperm(h * w, generator=g)[:n] for _ in range(b)]).to(x.device)
 
-    def masked(idx):
-        m = torch.ones(b, h * w, device=x.device)
-        m.scatter_(1, idx, 0.0)
-        return x * m.view(b, 1, h, w)  # 0 = dataset mean colour after normalisation
+    def blank(keep):  # keep: (b, h*w), 0 = blank. 0 = dataset mean colour after normalisation
+        return x * keep.view(b, 1, h, w)
+
+    keep_cam = torch.ones(b, h * w, device=x.device).scatter_(1, cam_t.topk(n, dim=1).indices, 0.0)
+    pix = torch.stack([torch.randperm(h * w, generator=g)[:n] for _ in range(b)]).to(x.device)
+    keep_pix = torch.ones(b, h * w, device=x.device).scatter_(1, pix, 0.0)
+    side = int(round(n ** 0.5))
+    keep_box = torch.ones(b, h, w, device=x.device)
+    for i in range(b):
+        t = int(torch.randint(0, h - side + 1, (1,), generator=g))
+        l = int(torch.randint(0, w - side + 1, (1,), generator=g))
+        keep_box[i, t:t + side, l:l + side] = 0.0
 
     def p(inp):
         return torch.sigmoid(model(inp).squeeze(1).float()).cpu().numpy()
 
-    return {"p_orig": p(x), "p_cam_masked": p(masked(top_idx)), "p_rand_masked": p(masked(rnd_idx))}
+    return {"p_orig": p(x), "p_cam_masked": p(blank(keep_cam)), "p_box_masked": p(blank(keep_box.view(b, -1))),
+            "p_pixels_masked": p(blank(keep_pix))}
