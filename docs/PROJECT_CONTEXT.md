@@ -76,29 +76,21 @@ Takeaways:
 
 Pick one workstream each. Suggested notebook names are there so we don't edit the same files.
 
-1. Problem 1 extras (`04_problem1_gradcam.ipynb`), done
-   - Grad-CAM heatmaps on ResNet-50 (`checkpoints/resnet50/best.pt`, target layer `model.layer4[-1]`). Compare correct vs wrong predictions on seen and unseen generators. Writing our own Grad-CAM gets bonus points, or use pytorch-grad-cam and cite it.
-   - Bootstrap 95% confidence intervals for per-generator AUROC (resample test images 1000 times) using `results/problem1_predictions.csv`.
-
-2. Raw vs processed (`05_raw_vs_processed.ipynb`)
+1. Raw vs processed (`05_raw_vs_processed.ipynb`)
    - Train the same ResNet-50 on the RAW subset (`raw_subset/`, original JPEG/PNG and sizes) and test on raw and processed test sets.
    - Shows how much the JPEG/PNG shortcut inflates results. Expected: near perfect on raw, collapses when fakes are JPEG.
 
-3. Problem 2a: degradation tests (`06_problem2_degradation.ipynb`), done
-   - Apply JPEG quality {95, 85, 75, 60, 50} and resize {0.5x, 0.75x, 1.5x} (optional blur/noise) to the processed test sets.
-   - Score all 3 Problem 1 detectors (saved checkpoints, no retraining), plot AUROC vs degradation level.
-
-4. Problem 2b: new generator + retraining (`07_sdxl_turbo_generation.ipynb`, `08_problem2_augmentation.ipynb`)
+2. Problem 2b: new generator + retraining (`07_sdxl_turbo_generation.ipynb`, `08_problem2_augmentation.ipynb`)
    - Generate ~500 fakes with SDXL-Turbo (`stabilityai/sdxl-turbo`, diffusers, 1-4 steps, fp16 on a T4) from ImageNet class prompts ("a photo of a {class name}"). Run them through the SAME preprocessing (`image_utils.process_file`). Save prompts, seeds, model version.
    - Retrain with augmentation (random JPEG q 60-100, random resize, blur), like Wang et al. 2020 (arXiv 1912.11035).
    - 2 competing models, e.g. ResNet-50 + augmentation vs CLIP probe + augmentation. Same metrics/plots as Problem 1 (`src/evaluate.py`).
 
-5. MLOps (`docs/MLOPS.md`, optional demo)
+3. MLOps (`docs/MLOPS.md`, optional demo)
    - Deployment diagram: upload, same preprocessing (crop, 224, JPEG q96), model server (FastAPI or TorchServe, maybe ONNX), score + threshold, Grad-CAM on request, logging.
    - Maintenance plan: drift monitoring on score distributions, a "new generator" test set as an early warning, retraining triggers, versioning (data manifests + seeds, checkpoints + config), champion/challenger promotion rule.
    - Optional: small Gradio demo using `best.pt` or the CLIP probe.
 
-6. Report + slides: everyone writes their own section. 15 min presentation, everyone presents their part.
+4. Report + slides: everyone writes their own section. 15 min presentation, everyone presents their part.
 
 Open questions for the professor:
 - Does robustness count as a separate second problem? If not, backup Problem 2 = generator attribution (predict which of the 8 generators made an image, same data, 8 classes).
