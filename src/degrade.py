@@ -1,10 +1,9 @@
-"""Image degradations for Problem 2: fixed test conditions + random training augmentation."""
-# Refs: Wang et al. 2020 (blur + JPEG augmentation), arXiv 1912.11035
+"""Image degradations for Problem 2 robustness tests (JPEG, resize, blur, noise)."""
+# Refs: Wang et al. 2020, arXiv 1912.11035
 from __future__ import annotations
 
 import hashlib
 import io
-import random
 from pathlib import Path
 
 import numpy as np
@@ -67,33 +66,6 @@ class FixedDegrade:
 
     def __call__(self, img, sample_id=""):
         return apply_steps(img, self.steps, stable_seed(sample_id))
-
-
-class RandomDegrade:
-    """Training augmentation: random blur / resize / JPEG, each with prob p.
-    deterministic=True gives the same result per (seed, sample_id), used for cached features."""
-
-    def __init__(self, p_blur=0.5, blur_sigma=(0.1, 3.0), p_resize=0.5, resize_scale=(0.5, 1.5),
-                 p_jpeg=0.5, jpeg_quality=(60, 100), deterministic=False, seed=42):
-        self.p_blur, self.blur_sigma = p_blur, tuple(blur_sigma)
-        self.p_resize, self.resize_scale = p_resize, tuple(resize_scale)
-        self.p_jpeg, self.jpeg_quality = p_jpeg, tuple(jpeg_quality)
-        self.deterministic, self.seed = deterministic, seed
-
-    def sample_steps(self, rng) -> list:
-        steps = []
-        if rng.random() < self.p_blur:
-            steps.append(["blur", rng.uniform(*self.blur_sigma)])
-        if rng.random() < self.p_resize:
-            steps.append(["resize", rng.uniform(*self.resize_scale)])
-        if rng.random() < self.p_jpeg:  # JPEG last, like re-uploading
-            steps.append(["jpeg", rng.randint(*self.jpeg_quality)])
-        return steps
-
-    def __call__(self, img, sample_id=""):
-        # python random is reseeded per DataLoader worker by torch
-        rng = random.Random(stable_seed(self.seed, sample_id)) if self.deterministic else random
-        return apply_steps(img, self.sample_steps(rng))
 
 
 class DegradedDataset(GenImageDataset):

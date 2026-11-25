@@ -1,4 +1,4 @@
-"""Problem 2 scoring loops: every model x test set x degradation, cached so nb 06 and 08 share work."""
+"""Problem 2 scoring loops: every model x test set x degradation, cached so reruns skip finished work."""
 from __future__ import annotations
 
 import re
@@ -103,7 +103,7 @@ def features_for(lazy: LazyExtractor, df, root, steps, fdir, image_size=224, bat
 
 def score_probe(lazy: LazyExtractor, clf, df, root, conditions: dict, model_name: str, set_name: str,
                 out_dir, feat_root, logger=None, **feat_kw) -> pd.DataFrame:
-    """Linear probe P(fake) for every condition. Features are shared by all probes on the same backbone."""
+    """Linear probe P(fake) for every condition, features cached per condition."""
     log = logger.info if logger else print
     out = []
     for cond, steps in conditions.items():

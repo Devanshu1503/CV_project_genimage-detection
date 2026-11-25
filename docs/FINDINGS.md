@@ -72,3 +72,67 @@ All three models are trained on SD1.4 only. The table shows AUROC on each test s
   | Midjourney | 0.45 |
 
 - BigGAN AUROC is below 0.5 for ResNet and DINOv2. This is likely because the 128 px BigGAN images get upscaled (blurred) and lack the high-frequency traces the models learned from SD.
+
+## Notebook 04: Grad-CAM and confidence intervals
+
+Bootstrap 95% confidence intervals for the notebook 03 AUROCs (1000 resamples, reals and fakes resampled separately).
+
+| Model | SD1.4 (seen) | Mean unseen (7) |
+|---|---|---|
+| ResNet-50 | 0.991 [0.985, 0.995] | 0.728 [0.716, 0.738] |
+| CLIP ViT-L/14 + LR | 0.985 [0.978, 0.990] | 0.839 [0.830, 0.848] |
+| DINOv2 ViT-B/14 + LR | 0.935 [0.919, 0.948] | 0.707 [0.696, 0.718] |
+
+- Intervals are about ±0.01 on SD1.4, SD1.5 and Wukong, and up to ±0.035 on ADM, GLIDE, VQDM and BigGAN.
+- The mean unseen intervals don't overlap, so the Problem 1 ranking is not test-set noise.
+- BigGAN is below 0.5 for the whole interval for ResNet-50 (0.424 [0.391, 0.462]) and DINOv2 (0.397 [0.362, 0.433]). These models rank BigGAN fakes as more real than real photos.
+- Paired tests (same resampled images for both models), CLIP minus ResNet-50:
+
+  | Generator | Difference [95% CI] |
+  |---|---|
+  | SD1.4 (seen) | -0.006 [-0.013, 0.001], tied |
+  | SD1.5 | -0.007, ResNet better |
+  | Wukong | -0.043, ResNet better |
+  | Midjourney | +0.097 |
+  | VQDM | +0.122 |
+  | ADM | +0.133 |
+  | BigGAN | +0.222 |
+  | GLIDE | +0.256 |
+  | Mean unseen | +0.111 [0.100, 0.123] |
+
+- CLIP beats DINOv2 on all 8 generators. ResNet-50 vs DINOv2 is mixed: ResNet is ahead on mean unseen (+0.020), DINOv2 on Midjourney and GLIDE.
+- Grad-CAM (our own implementation, on `layer4[-1]`):
+  - Fakes the ResNet catches (SD1.4, SD1.5, Wukong, Midjourney) give one compact blob in the middle of the image.
+  - Missed ADM, GLIDE, VQDM and BigGAN fakes look like real photos to it, with no concentrated "fake" evidence at all.
+  - 2 of the 4 most confident real-called-fake errors on SD1.4 are smooth surfaces (a yellow bowl, a cup of coffee). Smooth clean texture seems to be part of what it learned as "fake".
+- Deletion test (blank 20% of a caught fake):
+  - Blanking the heatmap region lowers P(fake) about 3x more than blanking a random box of the same size on the SD family (SD1.4 0.32 vs 0.11), and 2x on Midjourney. So the heatmaps point at what the model uses.
+  - But SD1.4 fakes still score 0.66 with that region blanked. Most of the evidence is spread over the whole image, which fits the high-frequency finding from notebook 02.
+  - Blanking 20% scattered single pixels instead drops SD1.4 fakes from 0.98 to 0.12. The ResNet is very sensitive to high-frequency disruption.
+
+## Notebook 06: degradation tests
+
+We scored the 3 Problem 1 models on 14 versions of the test sets: clean, JPEG quality 95/85/75/60/50, resize 0.5/0.75/1.5 (then back to 224), blur 1/2, noise 5/10, and "social" (resize 0.75 + JPEG 75). Real and fake images get the same damage. No retraining.
+
+- The clean version matches notebook 03 within 0.0001 AUROC.
+- AUROC on SD1.4 (seen) stays above 0.89 for every model and condition. ResNet-50 goes from 0.991 to 0.950 at JPEG 50.
+- But the 0.5 cutoff breaks. Damage pushes every score towards "real":
+
+  | SD1.4 fake accuracy | Clean | JPEG 50 | Blur 2 | Noise 10 |
+  |---|---|---|---|---|
+  | ResNet-50 | 0.96 | 0.48 | 0.26 | 0.13 |
+  | CLIP + LR | 0.95 | 0.48 | 0.40 | 0.28 |
+
+  Real accuracy stays at 0.95-1.0. So one JPEG re-save hides about half the fakes, while real photos are still called real.
+- Mean unseen AUROC:
+
+  | Model | Clean | JPEG 85 | JPEG 50 | Resize 1.5 | Blur 2 | Noise 10 | Social |
+  |---|---|---|---|---|---|---|---|
+  | ResNet-50 | 0.728 | 0.729 | 0.688 | 0.619 | 0.650 | 0.727 | 0.681 |
+  | CLIP + LR | 0.839 | 0.768 | 0.732 | 0.779 | 0.719 | 0.764 | 0.730 |
+  | DINOv2 + LR | 0.707 | 0.674 | 0.680 | 0.692 | 0.684 | 0.621 | 0.681 |
+
+- CLIP is still best on unseen generators under every condition, but it loses the most. Its lead over ResNet-50 shrinks from +0.111 to about +0.04. Most of the drop already happens at JPEG 85.
+- ResNet-50 is hurt most by enlarging (resize 1.5: ADM 0.46, GLIDE 0.41, BigGAN 0.26). Upscaling smooths away the fine detail it relies on.
+- DINOv2 changes least but starts lowest. Noise is its weak spot.
+- ResNet-50 on BigGAN goes from 0.42 to 0.68 with noise 10. Noise removes the detail that made BigGAN look "extra real" to it.

@@ -59,20 +59,24 @@ Takeaways:
 - On unseen generators, real-image accuracy stays at 0.93-0.96. The errors are new fakes being called real (ResNet fake accuracy: ADM 0.07, GLIDE 0.10, VQDM 0.11, BigGAN 0.01).
 - BigGAN AUROC is below 0.5 for ResNet and DINOv2, likely because 128 px BigGAN images get upscaled (blurred) and lack the high-frequency traces learned from SD.
 
-## Notebooks 04, 06, 07, 08 (written, not yet run on Colab)
+### Notebook 04: Grad-CAM + bootstrap CIs (done)
+- Bootstrap 95% CIs (1000 resamples) for every AUROC in the table above, plus paired tests between models (`src/stats.py`).
+- Mean unseen: CLIP 0.839 [0.830, 0.848], ResNet-50 0.728 [0.716, 0.738], DINOv2 0.707 [0.696, 0.718]. CLIP's lead over ResNet is significant (+0.111 [0.100, 0.123]). On SD1.4 they are tied.
+- Own Grad-CAM (`src/gradcam.py`, checked against a hand computation in tests). Caught SD-style fakes give one central blob, missed ADM/GLIDE/VQDM/BigGAN fakes show no fake evidence at all.
+- Deletion test: blanking the heatmap region lowers P(fake) ~3x more than a random box, but most evidence is spread over the image (texture / high frequency).
+- Outputs: `results/problem1_extras/`, `figures/problem1_extras/`.
 
-- 04 Grad-CAM + bootstrap: own Grad-CAM (`src/gradcam.py`, checked against a manual computation in tests), gallery of caught/missed fakes on seen vs unseen generators, mean heatmaps, deletion test. Bootstrap CIs + paired bootstrap model differences (`src/stats.py`). Outputs: `results/problem1_extras/`, `figures/problem1_extras/`.
-- 06 degradation: 14 conditions in `config.yaml > problem2.conditions` (JPEG 95-50, resize 0.5/0.75/1.5 round trip, blur, noise, resize+JPEG "social"), applied to real and fake. Scores all 3 Problem 1 models. Clean condition is checked against Problem 1 numbers.
-- 07 SDXL-Turbo: 500 fakes, prompts/seeds in `problem2/sdxl_turbo/prompts.csv`, versions in `generation_meta.json`, same preprocessing, test index `problem2/sdxl_turbo/sdxl_index.csv` (reals = SD1.4 test reals).
-- 08 augmentation: ResNet-50 + random blur/resize/JPEG (champion) vs CLIP probe on clean + 2 augmented feature copies (challenger), plus both baselines, on GenImage + SDXL-Turbo under all conditions. Bootstrap CIs + paired tests on clean and "social".
-- Shared code: `src/degrade.py`, `src/robustness.py` (cached per model x test set x condition in `results/problem2/preds/`, CLIP features in `features/problem2/`), `src/generate.py`.
-- Order: 06 and 07 before 08.
+### Notebook 06: Problem 2a degradation tests (done)
+- 14 conditions from `config.yaml > problem2.conditions` (JPEG 95-50, resize 0.5/0.75/1.5 and back, blur, noise, "social" = resize 0.75 + JPEG 75), same damage for real and fake. The 3 Problem 1 models are scored, no retraining.
+- AUROC holds up (SD1.4 stays above 0.89), but at the 0.5 cutoff fakes get called real: ResNet-50 fake accuracy on SD1.4 0.96 -> 0.48 at JPEG 50, 0.13 at noise 10. Real accuracy stays 0.95-1.0.
+- CLIP is still best on unseen generators but its lead shrinks from +0.111 to ~+0.04. ResNet is hurt most by resizing.
+- Code: `src/degrade.py`, `src/robustness.py`. One csv per model x test set x condition in `results/problem2/preds/`, CLIP/DINOv2 features in `features/problem2/`, so later Problem 2 work can reuse them.
 
 ## What is left
 
 Pick one workstream each. Suggested notebook names are there so we don't edit the same files.
 
-1. Problem 1 extras (`04_problem1_gradcam.ipynb`)
+1. Problem 1 extras (`04_problem1_gradcam.ipynb`), done
    - Grad-CAM heatmaps on ResNet-50 (`checkpoints/resnet50/best.pt`, target layer `model.layer4[-1]`). Compare correct vs wrong predictions on seen and unseen generators. Writing our own Grad-CAM gets bonus points, or use pytorch-grad-cam and cite it.
    - Bootstrap 95% confidence intervals for per-generator AUROC (resample test images 1000 times) using `results/problem1_predictions.csv`.
 
@@ -80,7 +84,7 @@ Pick one workstream each. Suggested notebook names are there so we don't edit th
    - Train the same ResNet-50 on the RAW subset (`raw_subset/`, original JPEG/PNG and sizes) and test on raw and processed test sets.
    - Shows how much the JPEG/PNG shortcut inflates results. Expected: near perfect on raw, collapses when fakes are JPEG.
 
-3. Problem 2a: degradation tests (`06_problem2_degradation.ipynb`)
+3. Problem 2a: degradation tests (`06_problem2_degradation.ipynb`), done
    - Apply JPEG quality {95, 85, 75, 60, 50} and resize {0.5x, 0.75x, 1.5x} (optional blur/noise) to the processed test sets.
    - Score all 3 Problem 1 detectors (saved checkpoints, no retraining), plot AUROC vs degradation level.
 

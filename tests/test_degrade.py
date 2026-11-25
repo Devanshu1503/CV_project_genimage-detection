@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from src.degrade import DegradedDataset, FixedDegrade, RandomDegrade, apply_steps, condition_family
+from src.degrade import DegradedDataset, FixedDegrade, apply_steps, condition_family
 
 
 def _img(seed=0):
@@ -23,14 +23,6 @@ def test_fixed_noise_is_per_image_deterministic():
     f = FixedDegrade([["noise", 10]])
     a, b, c = f(_img(), "x"), f(_img(), "x"), f(_img(), "y")
     assert np.array_equal(np.asarray(a), np.asarray(b)) and not np.array_equal(np.asarray(a), np.asarray(c))
-
-
-def test_random_degrade_deterministic_mode():
-    rd = RandomDegrade(p_blur=1, p_resize=1, p_jpeg=1, deterministic=True)
-    assert np.array_equal(np.asarray(rd(_img(), "s1")), np.asarray(rd(_img(), "s1")))
-    import random
-    steps = RandomDegrade().sample_steps(random.Random(0))
-    assert all(k in {"blur", "resize", "jpeg"} for k, _ in steps)
 
 
 def test_degraded_dataset(tmp_path):

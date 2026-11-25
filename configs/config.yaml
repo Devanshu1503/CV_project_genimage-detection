@@ -115,7 +115,7 @@ bootstrap:
   n_boot: 1000
   alpha: 0.05
 
-# Problem 2 (notebooks 06, 07, 08)
+# Problem 2 degradation tests (notebook 06)
 problem2:
   # name: [[kind, level], ...], applied to real AND fake test images
   conditions:
@@ -133,22 +133,3 @@ problem2:
     noise5: [[noise, 5]]         # std in 0-255 units
     noise10: [[noise, 10]]
     social: [[resize, 0.75], [jpeg, 75]]   # rough "re-uploaded" image
-  sdxl:
-    model_id: stabilityai/sdxl-turbo
-    n_images: 500
-    steps: 1                   # SDXL-Turbo is made for 1-4 steps
-    guidance: 0.0              # turbo is trained without CFG
-    size: 512
-    batch_size: 4
-    prompt_template: "a photo of a {}"
-    folder: sdxl_turbo
-    name: SDXL-Turbo
-    real_source: stable_diffusion_v_1_4   # reuse these 500 real test images
-  augment:                     # Wang et al. 2020 style, real and fake alike
-    p_blur: 0.5
-    blur_sigma: [0.1, 3.0]
-    p_resize: 0.5
-    resize_scale: [0.5, 1.5]
-    p_jpeg: 0.5
-    jpeg_quality: [60, 100]
-  probe_aug_copies: 2          # augmented feature copies per train image (+ the clean one)

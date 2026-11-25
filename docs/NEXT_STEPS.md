@@ -1,7 +1,6 @@
 # Next steps
 
-Where we are: notebooks 01 (dataset) and 02 (EDA + preprocessing) have been run, see `docs/FINDINGS.md`.
-Notebook 03 (Problem 1 baselines) is next. Before starting, read `README.md` (how to run), `docs/DATA.md`
+Where we are: notebooks 01-04 and 06 have been run, see `docs/FINDINGS.md`. Before starting, read `README.md` (how to run), `docs/DATA.md`
 (data decisions) and `docs/PROJECT_CONTEXT.md` (code conventions).
 
 ## 0. Finish phase 1
@@ -11,32 +10,30 @@ Notebook 03 (Problem 1 baselines) is next. Before starting, read `README.md` (ho
 - [ ] Copy the key figures and tables into the report draft (the EDA section is worth 15 pts).
 
 ## 1. Problem 1 extensions
-[x] = code written and tested locally (notebooks 04, 06, 07, 08). Still needs a Colab run + Findings cells filled in.
-
 - [x] Grad-CAM on ResNet-50: which image regions push it towards "fake"? Compare correct vs wrong predictions
       on seen (SD1.4) and unseen generators. Use `pytorch-grad-cam` (github.com/jacobgil/pytorch-grad-cam)
       or write a short version ourselves (bonus points for own code). Target layer: `model.layer4[-1]`.
-      Load `checkpoints/resnet50/best.pt`.
+      Load `checkpoints/resnet50/best.pt`. Done in notebook 04 (own Grad-CAM).
 - [ ] Raw vs processed training: train the same ResNet-50 on the raw subset (original formats and sizes,
       random crop only) and test on both raw and processed test sets. This shows how much the format/size
       shortcut inflates results. We expect it to look great on raw and fall apart once fakes are JPEG.
-- [x] Bootstrap 95% confidence intervals for per-generator AUROC (resample test images 1000 times).
+- [x] Bootstrap 95% confidence intervals for per-generator AUROC (resample test images 1000 times). Done in notebook 04.
 - [ ] Optional: look at misclassified images per generator, calibrate the threshold on SD1.4 val.
 
 ## 2. Problem 2: robustness (2 competing models)
 - [x] Degradation tests on the processed test sets: JPEG quality {95, 85, 75, 60, 50} and
       down/up-scaling {0.5x, 0.75x, 1.5x} (blur and noise optional). Plot AUROC vs degradation level for
-      every model as line charts.
-- [x] New fakes with SDXL-Turbo (`diffusers`, `stabilityai/sdxl-turbo`, 1-4 steps, fits on a T4 in fp16):
+      every model as line charts. Done in notebook 06.
+- [ ] New fakes with SDXL-Turbo (`diffusers`, `stabilityai/sdxl-turbo`, 1-4 steps, fits on a T4 in fp16):
       ~500 images from ImageNet class prompts ("a photo of a {class name}"). Run them through the
       same preprocessing (`image_utils.process_file`) and add them as a new test generator.
       Write down prompts, seeds and model version.
-- [x] Retraining with augmentation: ResNet-50 (and/or the linear probe on augmented features) trained
+- [ ] Retraining with augmentation: ResNet-50 (and/or the linear probe on augmented features) trained
       with random JPEG (q 60-100), random resize and blur, like Wang et al. 2020 (arXiv 1912.11035).
       Compare champion vs challenger, e.g. ResNet-50 + augmentation vs CLIP probe + augmentation
       (or vs the baseline without augmentation). Same metrics and plots as Problem 1 (`src/evaluate.py`).
-- [x] Put new code in `src/` (e.g. `src/degrade.py`, `src/generate.py`) with tests, and add notebooks
-      `04_problem2_robustness.ipynb` and `05_sdxl_turbo_generation.ipynb`. Keep using the shared setup cell.
+- [ ] Put new code in `src/` with tests and keep using the shared setup cell. Already there:
+      `gradcam.py`, `stats.py` (nb 04), `degrade.py`, `robustness.py` (nb 06).
 
 ## 3. MLOps (10 pts)
 - [ ] Deployment diagram + short text, e.g. upload -> preprocessing (the same RGB/crop/224/JPEG steps,
