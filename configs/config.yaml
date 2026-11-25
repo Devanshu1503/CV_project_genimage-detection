@@ -101,3 +101,35 @@ training:
 
 evaluation:
   threshold: 0.5
+
+# Problem 1 extras (notebook 04)
+gradcam:
+  layer: layer4                # model.layer4[-1], 6x6 map at 192 px input
+  gallery_generators: [stable_diffusion_v_1_4, Midjourney, ADM, BigGAN]
+  n_per_cell: 4                # images per (generator, outcome) in the gallery
+  n_mean_per_generator: 100    # fakes + reals per generator for mean heatmaps / stats
+  deletion_frac: 0.2           # share of pixels blanked in the deletion test
+  batch_size: 32
+
+bootstrap:
+  n_boot: 1000
+  alpha: 0.05
+
+# Problem 2 degradation tests (notebook 06)
+problem2:
+  # name: [[kind, level], ...], applied to real AND fake test images
+  conditions:
+    clean: []
+    jpeg95: [[jpeg, 95]]
+    jpeg85: [[jpeg, 85]]
+    jpeg75: [[jpeg, 75]]
+    jpeg60: [[jpeg, 60]]
+    jpeg50: [[jpeg, 50]]
+    resize0.5: [[resize, 0.5]]   # down then back up to 224
+    resize0.75: [[resize, 0.75]]
+    resize1.5: [[resize, 1.5]]
+    blur1: [[blur, 1.0]]         # gaussian sigma
+    blur2: [[blur, 2.0]]
+    noise5: [[noise, 5]]         # std in 0-255 units
+    noise10: [[noise, 10]]
+    social: [[resize, 0.75], [jpeg, 75]]   # rough "re-uploaded" image

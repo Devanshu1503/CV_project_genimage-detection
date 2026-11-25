@@ -6,7 +6,7 @@ UChicago MSADS, Advanced Computer Vision (ADSP 31023), team project.
 
 We want to know if a fake-image detector trained on one generator still works on generators it has never seen. We train on Stable Diffusion 1.4 images only and test on all 8 generators in GenImage. We compare a fine-tuned ResNet-50 against frozen CLIP and DINOv2 features with a linear classifier on top, using AUROC per generator.
 
-Problem 2 (next) is about robustness: JPEG compression, resizing and new generators.
+Problem 2 is about robustness: do the detectors still work when images get JPEG-compressed, resized, blurred or noisy, the way they do online?
 
 ## Data and why we sample it
 
@@ -44,8 +44,10 @@ Paths are in [configs/config.yaml](configs/config.yaml) if your shortcuts have o
 | [01_build_dataset](notebooks/01_build_dataset.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/01_build_dataset.ipynb) | CPU | lists the zips, samples, extracts the sample, checks for duplicates and leakage |
 | [02_eda_and_preprocess](notebooks/02_eda_and_preprocess.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/02_eda_and_preprocess.ipynb) | CPU | EDA, bias checks, preprocessing, train/val/test split |
 | [03_problem1_baselines](notebooks/03_problem1_baselines.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/03_problem1_baselines.ipynb) | T4 GPU | CLIP and DINOv2 linear probes vs ResNet-50, results per generator |
+| [04_problem1_gradcam](notebooks/04_problem1_gradcam.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/04_problem1_gradcam.ipynb) | T4 GPU | Grad-CAM heatmaps for the ResNet-50, bootstrap confidence intervals for the Problem 1 AUROCs |
+| [06_problem2_degradation](notebooks/06_problem2_degradation.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Devanshu1503/CV_project_genimage-detection/blob/main/notebooks/06_problem2_degradation.ipynb) | T4 GPU | scores the 3 Problem 1 models on JPEG-compressed, resized, blurred and noisy test images |
 
-For notebook 03, pick Runtime > Change runtime type > T4 GPU first.
+For notebooks 03, 04 and 06, pick Runtime > Change runtime type > T4 GPU first.
 
 Everything is resumable. If Colab disconnects, run all again and finished steps get skipped. ResNet training continues from its last checkpoint.
 
@@ -63,7 +65,7 @@ Colab uploads Drive writes in the background, and a new session can miss files t
 ```
 configs/config.yaml   all paths, sample sizes and hyperparameters
 src/                  the actual code, the notebooks just call it
-notebooks/            01, 02, 03 (clean, no outputs)
+notebooks/            01-04, 06 (clean, no outputs)
 executed_notebooks/   our Colab runs with outputs
 tests/                pytest, runs locally without the data
 docs/                 DATA.md, FINDINGS.md, NEXT_STEPS.md, PROJECT_CONTEXT.md
@@ -75,8 +77,10 @@ To run the tests locally: `pip install -r requirements.txt`, then `python -m pyt
 
 - Notebook 01 (dataset) and notebook 02 (EDA + preprocessing) are done.
 - Notebook 03 (Problem 1 baselines) is done. Mean AUROC on the 7 unseen generators: CLIP + LR 0.839, ResNet-50 0.728, DINOv2 + LR 0.707.
+- Notebook 04 (Grad-CAM + confidence intervals) is done. CLIP's lead on unseen generators is significant (+0.111, 95% CI [0.100, 0.123]).
+- Notebook 06 (degradation tests) is done. AUROC holds up, but at the 0.5 cutoff a JPEG 50 re-save drops ResNet-50's fake accuracy on SD1.4 from 0.96 to 0.48.
 - All results are in [docs/FINDINGS.md](docs/FINDINGS.md).
-- Next up: Problem 2 (robustness) and the MLOps part. See [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md).
+- Next up: the rest of Problem 2, raw vs processed and the MLOps part. See [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md).
 
 ## Team
 
@@ -91,6 +95,7 @@ To run the tests locally: `pip install -r requirements.txt`, then `python -m pyt
 - Zhu et al. 2023, GenImage: A Million-Scale Benchmark for Detecting AI-Generated Image, arXiv 2306.08571
 - Grommelt et al. 2024, Fake or JPEG? Revealing Common Biases in Generated Image Detection Datasets, arXiv 2403.17608
 - Ojha et al. 2023, Towards Universal Fake Image Detectors that Generalize Across Generative Models, arXiv 2302.10174
+- Selvaraju et al. 2017, Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization, arXiv 1610.02391
 - Wang et al. 2020, CNN-generated images are surprisingly easy to spot... for now, arXiv 1912.11035
 - Frank et al. 2020, Leveraging Frequency Analysis for Deep Fake Image Recognition, arXiv 2003.08685
 - He et al. 2016 (ResNet), arXiv 1512.03385
